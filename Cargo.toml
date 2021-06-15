@@ -1,0 +1,11 @@
+[package]
+name = "erosion"
+version = "0.1.0"
+authors = ["Masterchef365 <duncan.freeman1@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+anyhow = "1"
+watertender = { path = "../watertender" }
+png = "0.16"
+bytemuck = "1.5"

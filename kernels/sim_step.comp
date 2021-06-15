@@ -1,0 +1,89 @@
+layout(binding = 0) buffer Droplets {
+    Droplet droplets[];
+};
+
+layout (binding=1, r32f) uniform readonly image2D heightmap;
+layout (binding=2, r32f) uniform writeonly image2D erosion_img;
+
+layout(binding = 3) uniform SimulationParams {
+    // Inertia
+    float inertia;
+    // Minimum slope for capacity calculation
+    float min_slope;
+    // Capacity for droplets to carry material
+    float capacity_const;
+    // Sediment dropped beyond capacity
+    float deposition;
+    // Sediment picked up under capacity
+    float erosion;
+    // Force of gravity
+    float gravity;
+    // Evaporation rate
+    float evaporation; // TODO: 1- evap for speed!
+};
+
+// A droplet particle
+struct Droplet {
+    // Position
+    vec2 pos;
+    // Direction
+    vec2 dir;
+    // Velocity
+    float vel;
+    // Water
+    float water;
+    // Sediment
+    float sediment;
+}
+
+vec2 gradient(vec2 pos) {
+    ivec2 int_pos = ivec2(pos);
+    vec2 uv = fract(pos);
+    float tl = imageLoad(read_img, int_pos + ivec2(0, 0));
+    float tr = imageLoad(read_img, int_pos + ivec2(1, 0));
+    float bl = imageLoad(read_img, int_pos + ivec2(0, 1));
+    float br = imageLoad(read_img, int_pos + ivec2(1, 1));
+    return vec2(
+        mix(tr - tl, br - bl, uv.y),
+        mix(bl - tl, br - tr, uv.x),
+    );
+}
+
+// Simulation step
+void main() {
+    uint gid = gl_GlobalInvocationId.x;
+
+    vec2 old_pos = droplet[gid].pos;
+    vec2 grad = gradient(droplet[gid].pos);
+
+    // TODO: Random direction if `dir` == vec2(0)!
+    droplet[gid].dir = mix(g, droplet[gid].dir, inertia);
+
+    droplet[gid].pos += droplet[gid].dir;
+
+    float height_old = imageLoad(read_img, ivec2(old_pos)).x;
+    float height_new = imageLoad(read_img, ivec2(droplet[gid].pos)).x;
+    float height_diff = height_new - height_old;
+
+    float capacity = 
+        max(-height_diff, min_slope)
+        * droplet[gid].vel
+        * droplet[gid].water
+        * capacity_const;
+    
+    float sediment_diff;
+    if (droplet[gid].sediment > capacity) {
+        sediment_diff = (droplet[gid].sediment - capacity) * deposition;
+    } else {
+        sediment_diff = -min((capacity - droplet[gid].sediment) * erosion, -height_diff);
+    }
+
+    // TODO: You actually need to add or subtract within a radius! (Which is different due to settling/piling)
+    imageAtomicExchange(write_img, old_pos, height_old + sediment_diff);
+
+    droplet[gid].vel = sqrt(pow(droplet[gid].vel, 2), height_diff * gravity);
+
+    droplet[gid].water *= 1. - evaporation;
+}
+
+

@@ -193,7 +193,7 @@ impl MainLoop for App {
         // Pipeline
         let pipeline = shader(
             core,
-            &fs::read("shaders/unlit.vert.spv")?,
+            &fs::read("shaders/heightmap.vert.spv")?,
             &fs::read("shaders/unlit_tex.frag.spv")?,
             vk::PrimitiveTopology::TRIANGLE_LIST,
             starter_kit.render_pass,
@@ -201,7 +201,11 @@ impl MainLoop for App {
         ).context("Failed to compile shader")?;
 
         // Mesh uploads
-        let (vertices, indices) = rainbow_cube();
+        assert_eq!(info.width, info.height);
+        let size = info.width as i32;
+        let scale = 0.1;
+        let vertices = dense_grid_verts(size, scale);
+        let indices = dense_grid_tri_indices(size);
         let rainbow_cube = upload_mesh(
             &mut starter_kit.staging_buffer,
             starter_kit.command_buffers[0],
@@ -327,4 +331,68 @@ fn read_image(path: impl AsRef<Path>) -> Result<(Vec<u8>, png::OutputInfo)> {
     reader.next_frame(&mut img_buffer)?;
 
     Ok((img_buffer, info))
+}
+
+fn dense_grid_verts(size: i32, scale: f32) -> Vec<Vertex> {
+    (-size..=size)
+        .map(|x| (-size..=size).map(move |y| (x, y)))
+        .flatten()
+        .map(|(x, y)| {
+            let (x, y) = (x as f32, y as f32);
+            let size = size as f32;
+            Vertex {
+                pos: [x * scale, 0., y * scale],
+                color: [
+                    ((x / size) + 1.) / 2.,
+                    ((y / size) + 1.) / 2.,
+                    0.
+                ],
+            }
+        })
+        .collect()
+}
+
+fn dense_grid_edge_indices(width: u32) -> impl Iterator<Item = u32> {
+    (0..width - 1)
+        .map(move |x| (0..width - 1).map(move |y| (x, y)))
+        .flatten()
+        .map(move |(x, y)| x + y * width)
+}
+
+/*
+fn dense_grid_wire_indices(size: i32) -> Vec<u32> {
+    let width = (size * 2 + 1) as u32;
+    let mut indices = Vec::new();
+    for base in dense_grid_edge_indices(width) {
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base);
+        indices.push(base + width);
+    }
+    // Outer edge
+    let outer = width-1;
+    for i in 0..outer {
+        let edge = (width - 1) * width;
+        indices.push(i+edge);
+        indices.push(i+edge+1);
+
+        indices.push(i * width + outer);
+        indices.push((i + 1) * width + outer);
+    }
+    indices
+}
+*/
+
+fn dense_grid_tri_indices(size: i32) -> Vec<u32> {
+    let width = (size * 2 + 1) as u32;
+    let mut indices = Vec::new();
+    for base in dense_grid_edge_indices(width) {
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base + width);
+        indices.push(base + 1);
+        indices.push(base + width + 1);
+        indices.push(base + width);
+    }
+    indices
 }

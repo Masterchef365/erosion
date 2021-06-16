@@ -20,7 +20,8 @@ void main() {
     uint gid = gl_GlobalInvocationID.x;
     droplets[gid].pos = vec2(rand(vec2(1., gid)), rand(vec2(gid, 1.)));
     droplets[gid].dir = vec2(rand(vec2(2., gid)), rand(vec2(gid, 2.)));
-    // TODO: Add these to the config!
+    // TODO: Add these to the settings!
+    // ... And/Or vary them randomly...
     droplets[gid].vel = 1.;
     droplets[gid].water = 1.;
     droplets[gid].sediment = 0.;

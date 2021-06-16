@@ -19,6 +19,9 @@ pub struct ErosionSim {
     heightmap: ManagedImage,
     settings_buf: ManagedBuffer,
 
+    erosion_view: vk::ImageView,
+    heightmap_view: vk::ImageView,
+
     descriptor_set: vk::DescriptorSet,
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layout: vk::DescriptorSetLayout,
@@ -217,9 +220,92 @@ impl ErosionSim {
         let sim_step = load_pipeline(&core, "kernels/sim_step.comp.spv", pipeline_layout)?;
         let erosion_blur = load_pipeline(&core, "kernels/erosion_blur.comp.spv", pipeline_layout)?;
 
-        // TODO: Write descriptor sets!
+        // Create image views
+        let img_subresource = vk::ImageSubresourceRangeBuilder::new()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1)
+            .build();
+
+        let cm = vk::ComponentMapping {
+            r: vk::ComponentSwizzle::IDENTITY,
+            g: vk::ComponentSwizzle::IDENTITY,
+            b: vk::ComponentSwizzle::IDENTITY,
+            a: vk::ComponentSwizzle::IDENTITY,
+        };
+
+        // Create heightmap view
+        let create_info = vk::ImageViewCreateInfoBuilder::new()
+            .image(heightmap.instance())
+            .view_type(vk::ImageViewType::_2D)
+            .format(HEIGHT_MAP_FORMAT)
+            .components(cm)
+            .subresource_range(img_subresource);
+        let heightmap_view =
+            unsafe { core.device.create_image_view(&create_info, None, None) }.result()?;
+
+        let heightmap_image_infos = [vk::DescriptorImageInfoBuilder::new()
+            .image_view(heightmap_view)
+            .image_layout(vk::ImageLayout::UNDEFINED)];
+
+        // Create erosion view
+        let create_info = vk::ImageViewCreateInfoBuilder::new()
+            .image(erosion.instance())
+            .view_type(vk::ImageViewType::_2D)
+            .format(HEIGHT_MAP_FORMAT)
+            .components(cm)
+            .subresource_range(img_subresource);
+        let erosion_view =
+            unsafe { core.device.create_image_view(&create_info, None, None) }.result()?;
+
+        let erosion_image_infos = [vk::DescriptorImageInfoBuilder::new()
+            .image_view(erosion_view)
+            .image_layout(vk::ImageLayout::UNDEFINED)];
+
+        // Descriptor buffer vies
+        let droplets_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(droplets.instance())
+            .offset(0)
+            .range(vk::WHOLE_SIZE)];
+
+        let settings_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(settings_buf.instance())
+            .offset(0)
+            .range(vk::WHOLE_SIZE)];
+
+        // Write descriptor sets
+        let desc_set_writes = [
+            vk::WriteDescriptorSetBuilder::new()
+                .dst_set(descriptor_set)
+                .dst_binding(SETTINGS_BINDING)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&settings_info),
+            vk::WriteDescriptorSetBuilder::new()
+                .dst_set(descriptor_set)
+                .dst_binding(DROPLETS_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .buffer_info(&droplets_info),
+            vk::WriteDescriptorSetBuilder::new()
+                .dst_set(descriptor_set)
+                .dst_binding(HEIGHT_MAP_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(&heightmap_image_infos),
+            vk::WriteDescriptorSetBuilder::new()
+                .dst_set(descriptor_set)
+                .dst_binding(EROSION_MAP_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                .image_info(&erosion_image_infos),
+        ];
+
+        unsafe {
+            core.device.update_descriptor_sets(&desc_set_writes, &[]);
+        }
 
         let mut instance = Self {
+            erosion_view,
+            heightmap_view,
             settings_buf,
             descriptor_set,
             descriptor_pool,

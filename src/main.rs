@@ -3,6 +3,8 @@ use defaults::FRAMES_IN_FLIGHT;
 use anyhow::{Result, Context};
 use std::path::Path;
 use std::fs;
+mod simulation;
+use simulation::*;
 
 struct App {
     rainbow_cube: ManagedMesh,
@@ -296,26 +298,6 @@ impl SyncMainLoop for App {
     fn winit_sync(&self) -> (vk::Semaphore, vk::Semaphore) {
         self.starter_kit.winit_sync()
     }
-}
-
-fn rainbow_cube() -> (Vec<Vertex>, Vec<u32>) {
-    let vertices = vec![
-        Vertex::new([-1.0, -1.0, -1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([1.0, -1.0, -1.0], [1.0, 0.0, 1.0]),
-        Vertex::new([1.0, 1.0, -1.0], [1.0, 1.0, 0.0]),
-        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([-1.0, -1.0, 1.0], [1.0, 0.0, 1.0]),
-        Vertex::new([1.0, -1.0, 1.0], [1.0, 1.0, 0.0]),
-        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([-1.0, 1.0, 1.0], [1.0, 0.0, 1.0]),
-    ];
-
-    let indices = vec![
-        3, 1, 0, 2, 1, 3, 2, 5, 1, 6, 5, 2, 6, 4, 5, 7, 4, 6, 7, 0, 4, 3, 0, 7, 7, 2, 3, 6, 2, 7,
-        0, 5, 4, 1, 5, 0,
-    ];
-
-    (vertices, indices)
 }
 
 fn read_image(path: impl AsRef<Path>) -> Result<(Vec<f32>, png::OutputInfo)> {

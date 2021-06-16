@@ -129,7 +129,7 @@ impl ErosionSim {
             .format(EROSION_MAP_FORMAT)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
@@ -535,7 +535,7 @@ impl ErosionSim {
                 .queue_submit(self.core.queue, &[submit_info], None)
                 .result()?;
 
-            self.core.device.queue_wait_idle(self.core.queue);
+            self.core.device.queue_wait_idle(self.core.queue).result()?;
         }
 
         Ok(())

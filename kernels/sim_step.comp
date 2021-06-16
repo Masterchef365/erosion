@@ -31,6 +31,6 @@ void main() {
     uint gid = gl_GlobalInvocationID.x;
     droplets[gid].pos += droplets[gid].dir / 1000.;
     ivec2 imgpos = ivec2(droplets[gid].pos * imageSize(erosionmap));
-    imageStore(erosionmap, imgpos, vec4(-0.001));
+    imageStore(erosionmap, imgpos, vec4(-0.01 * cos(droplets[gid].pos.x * 8.)));
     //imageAtomicExchange(erosionmap, imgpos, -0.0001);
 }

@@ -30,9 +30,13 @@ void main() {
     float total = 0.;
     for (int x = -KERNEL_SIZE; x <= KERNEL_SIZE; x++) {
         for (int y = -KERNEL_SIZE; y <= KERNEL_SIZE; y++) {
-            ivec2 img_pos_off = img_pos + ivec2(x, y);
+            ivec2 kern_pos = ivec2(x, y);
+            ivec2 img_pos_off = img_pos + kern_pos;
+
             if (any(greaterThan(img_pos_off, img_size)) || any(lessThan(img_pos_off, ivec2(0)))) continue;
-            total += imageLoad(erosionmap, img_pos_off).r;
+
+            float multiplier = max(0., float(KERNEL_SIZE) - length(kern_pos));
+            total += imageLoad(erosionmap, img_pos_off).r * multiplier;
         }
     }
     total /= KERNEL_AREA;

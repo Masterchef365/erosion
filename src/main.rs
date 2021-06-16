@@ -55,7 +55,7 @@ impl MainLoop for App {
         };
 
         let init_settings = InitSettings {
-            seed: 1.0,
+            seed: 2.0,
             noise_res: 6,
             noise_amplitude: 1.,
             hill_peak: 1.,
@@ -291,7 +291,8 @@ impl MainLoop for App {
         let command_buffer = cmd.command_buffer;
 
         let sim_settings = SimulationSettings {
-            inertia: 0.025,
+            //inertia: 0.025,
+            inertia: 0.07,
             min_slope: 0.01,
             capacity_const: 1.0,
             deposition: 1.0,

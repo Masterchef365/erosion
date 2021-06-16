@@ -71,12 +71,12 @@ void main() {
     vec2 uv = vec2(img_pos) / img_size;
     float perlin_height = noise_amplitude * pNoise(uv, noise_res);
 
-    float dist = 9999999.;
+    float hill_height = 0.;
     for (int i = 1; i <= n_hills; i++) {
         vec2 pos = vec2(rand(vec2(i, 1.)), rand(vec2(1., i)));
-        dist = min(distance(uv, pos), dist);
+        float dist = distance(uv, pos);
+        hill_height = max(hill_height, rand(vec2(i)) * hill_peak - dist * hill_falloff);
     }
-    float hill_height = max(0., hill_peak - dist * hill_falloff);
 
     float height = perlin_height * 0.2 + hill_height * 0.5;
     imageStore(heightmap, img_pos, vec4(height));

@@ -13,6 +13,9 @@ const HEIGHT_MAP_BINDING: u32 = 2;
 const EROSION_MAP_BINDING: u32 = 3;
 //const HEIGHT_MAP_SAMPLER_BINDING: u32 = 4;
 
+const KERNEL_LOCAL_X: u32 = 32;
+const KERNEL_LOCAL_Y: u32 = 32;
+
 pub struct ErosionSim {
     droplets: ManagedBuffer,
     erosion: ManagedImage,
@@ -31,6 +34,8 @@ pub struct ErosionSim {
     init_heightmap: vk::Pipeline,
     sim_step: vk::Pipeline,
     erosion_blur: vk::Pipeline,
+
+    sim_size: SimulationSize,
 
     core: SharedCore,
 }
@@ -52,6 +57,9 @@ pub struct InitSettings {
     pub n_hills: i32,
 }
 
+unsafe impl bytemuck::Zeroable for InitSettings {}
+unsafe impl bytemuck::Pod for InitSettings {}
+
 // TODO: Builder pattern?
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -72,6 +80,9 @@ pub struct SimulationSettings {
     pub evaporation: f32, // TODO: 1- evap for speed!
 }
 
+unsafe impl bytemuck::Zeroable for SimulationSettings {}
+unsafe impl bytemuck::Pod for SimulationSettings {}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Droplet {
@@ -87,6 +98,7 @@ pub struct Droplet {
     sediment: f32,
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct SimulationSize {
     pub width: u32,
     pub height: u32,
@@ -98,13 +110,13 @@ impl ErosionSim {
     pub fn new(
         core: SharedCore,
         cmd: vk::CommandBuffer,
-        size: &SimulationSize,
+        sim_size: SimulationSize,
         init_settings: &InitSettings,
     ) -> Result<Self> {
         // Create erosion and heightmap images
         let extent = vk::Extent3DBuilder::new()
-            .width(size.width)
-            .height(size.height)
+            .width(sim_size.width)
+            .height(sim_size.height)
             .depth(1)
             .build();
 
@@ -117,7 +129,7 @@ impl ErosionSim {
             .format(EROSION_MAP_FORMAT)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::STORAGE)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
@@ -127,7 +139,7 @@ impl ErosionSim {
         // Create droplet buffer
         let ci = vk::BufferCreateInfoBuilder::new()
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .size(size.droplets as u64 * std::mem::size_of::<Droplet>() as u64)
+            .size(sim_size.droplets as u64 * std::mem::size_of::<Droplet>() as u64)
             .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
 
         let droplets = ManagedBuffer::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
@@ -147,14 +159,14 @@ impl ErosionSim {
         // Pool:
         let pool_sizes = [
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(2),
+            ._type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1),
             vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::STORAGE_BUFFER)
             .descriptor_count(1),
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
+            ._type(vk::DescriptorType::STORAGE_IMAGE)
+            .descriptor_count(2),
             /*vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1),*/
@@ -304,6 +316,7 @@ impl ErosionSim {
         }
 
         let mut instance = Self {
+            sim_size,
             erosion_view,
             heightmap_view,
             settings_buf,
@@ -337,11 +350,44 @@ impl ErosionSim {
     }
 
     pub fn reset(&mut self, cmd: vk::CommandBuffer, settings: &InitSettings) -> Result<()> {
-        // Upload init settings to settings buffer (mind the weird uniform buffer thing!)
-        // Write init commands + appropriate barrier for a step.. ?
-        // WAIT FOR QUEUE IDLE! This is important since you need the settings UBO to have been
-        // written to and NOT in use when it is written for the step...
-        todo!()
+        // Update settings buffer (TODO: Barrier?)
+        self.settings_buf.write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
+
+        unsafe {
+            self.core.device.reset_command_buffer(cmd, None).result()?;
+            let bi = vk::CommandBufferBeginInfoBuilder::new();
+            self.core.device.begin_command_buffer(cmd, &bi).result()?;
+
+            self.core.device.cmd_bind_descriptor_sets(
+                cmd, 
+                vk::PipelineBindPoint::COMPUTE, 
+                self.pipeline_layout, 
+                0, 
+                &[self.descriptor_set], 
+                &[]
+            );
+
+            self.core.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.init_droplets);
+            self.core.device.cmd_dispatch(cmd, (self.sim_size.droplets / KERNEL_LOCAL_X) + 1, 1, 1);
+
+            self.core.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.init_heightmap);
+            self.core.device.cmd_dispatch(cmd, (self.sim_size.width / KERNEL_LOCAL_X) + 1, (self.sim_size.height / KERNEL_LOCAL_Y) + 1, 1);
+
+            self.core.device.end_command_buffer(cmd).result()?;
+
+            let command_buffers = [cmd];
+            let submit_info = vk::SubmitInfoBuilder::new()
+                .command_buffers(&command_buffers);
+
+            self.core
+                .device
+                .queue_submit(self.core.queue, &[submit_info], None)
+                .result()?;
+
+            self.core.device.queue_wait_idle(self.core.queue);
+        }
+
+        Ok(())
     }
 
     pub fn droplet_buffer_vk(&self) -> vk::Buffer {

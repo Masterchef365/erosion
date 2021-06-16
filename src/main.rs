@@ -65,7 +65,7 @@ impl MainLoop for App {
         let simulation = ErosionSim::new(
             starter_kit.core.clone(),
             starter_kit.current_command_buffer(),
-            &sim_size,
+            sim_size,
             &init_settings,
         )?;
 
@@ -119,7 +119,7 @@ impl MainLoop for App {
 
         // Create descriptor set layout
         const FRAME_DATA_BINDING: u32 = 0;
-        const DROPLET_BINDING: u32 = 2;
+        const DROPLET_BINDING: u32 = 1;
         const IMAGE_BINDING: u32 = 2;
         let bindings = [
             vk::DescriptorSetLayoutBindingBuilder::new()
@@ -205,7 +205,7 @@ impl MainLoop for App {
                     .buffer_info(&droplet_buffer_info)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .dst_set(descriptor_set)
-                    .dst_binding(FRAME_DATA_BINDING)
+                    .dst_binding(DROPLET_BINDING)
                     .dst_array_element(0),
                 vk::WriteDescriptorSetBuilder::new()
                     .image_info(&image_infos)

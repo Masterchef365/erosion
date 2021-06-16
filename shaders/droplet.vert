@@ -22,12 +22,13 @@ void main() {
     float height = texture(heightmap, droplet.pos).r; 
 
     // TODO: Standardize this magic!
-    height = height * 30. + 0.5;
+    height = height + 0.005;// + 0.5;
 
     vec3 pos = vec3(droplet.pos.x, height, droplet.pos.y);
 
+    gl_PointSize = 5.;
     gl_Position = camera[gl_ViewIndex] * vec4(pos, 1.0);
 
-    fragColor = vec3(0., 1., 0.);
+    fragColor = vec3(0., 0.3, 1.);
 }
 

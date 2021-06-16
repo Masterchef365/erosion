@@ -17,7 +17,8 @@ layout(binding = 2) uniform sampler2D tex;
 
 void main() {
     vec3 pos = inPosition;
-    pos.y += float(texture(tex, inColor.xy).r) * 30.;
+    pos.xz += 0.5;
+    pos.y += float(texture(tex, inColor.xy).r);
     gl_Position = camera[gl_ViewIndex] * vec4(pos, 1.0);
     fragColor = inColor;
 }

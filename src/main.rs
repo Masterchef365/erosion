@@ -10,6 +10,7 @@ struct App {
     terrain_mesh: ManagedMesh,
 
     terrain_shader: vk::Pipeline,
+    droplet_shader: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
 
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -223,20 +224,15 @@ impl MainLoop for App {
         let descriptor_set_layouts = [descriptor_set_layout];
 
         // Pipeline layout
-        let push_constant_ranges = [vk::PushConstantRangeBuilder::new()
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .offset(0)
-            .size(std::mem::size_of::<[f32; 4 * 4]>() as u32)];
-
         let create_info = vk::PipelineLayoutCreateInfoBuilder::new()
-            .push_constant_ranges(&push_constant_ranges)
+            .push_constant_ranges(&[])
             .set_layouts(&descriptor_set_layouts);
 
         let pipeline_layout =
             unsafe { core.device.create_pipeline_layout(&create_info, None, None) }.result()?;
 
-        // Pipeline
-        let pipeline = shader(
+        // Pipelines
+        let terrain_shader = shader(
             core,
             &fs::read("shaders/heightmap.vert.spv")?,
             &fs::read("shaders/unlit_tex.frag.spv")?,
@@ -246,10 +242,20 @@ impl MainLoop for App {
         )
         .context("Failed to compile shader")?;
 
+        let droplet_shader = vert_pulling_shader(
+            core,
+            &fs::read("shaders/droplet.vert.spv")?,
+            &fs::read("shaders/unlit.frag.spv")?,
+            vk::PrimitiveTopology::POINT_LIST,
+            starter_kit.render_pass,
+            pipeline_layout,
+        )
+        .context("Failed to compile shader")?;
+
         // Mesh uploads
         assert_eq!(sim_size.width, sim_size.height);
         let size = sim_size.width as i32;
-        let scale = 0.1;
+        let scale = 1. / (size * 2 + 1) as f32;
         let vertices = dense_grid_verts(size, scale);
         let indices = dense_grid_tri_indices(size);
         let rainbow_cube = upload_mesh(
@@ -262,6 +268,7 @@ impl MainLoop for App {
         Ok(Self {
             camera,
             simulation,
+            droplet_shader,
             descriptor_set_layout,
             descriptor_sets,
             descriptor_pool,
@@ -269,7 +276,7 @@ impl MainLoop for App {
             pipeline_layout,
             scene_ubo,
             terrain_mesh: rainbow_cube,
-            terrain_shader: pipeline,
+            terrain_shader: terrain_shader,
             starter_kit,
         })
     }
@@ -293,7 +300,7 @@ impl MainLoop for App {
                 &[],
             );
 
-            // Draw cmds
+            // Draw terrain
             core.device.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
@@ -305,6 +312,15 @@ impl MainLoop for App {
                 command_buffer,
                 std::slice::from_ref(&&self.terrain_mesh),
             );
+
+            // Draw droplets
+            core.device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.droplet_shader,
+            );
+
+            core.device.cmd_draw(command_buffer, self.simulation.size().droplets, 1, 0, 0);
         }
 
         let (ret, cameras) = self.camera.get_matrices(platform)?;
@@ -403,4 +419,124 @@ fn dense_grid_tri_indices(size: i32) -> Vec<u32> {
         indices.push(base + width);
     }
     indices
+}
+
+
+// Build a graphics pipeline compatible with `Vertex` which renders the given primitive
+pub fn vert_pulling_shader(
+    prelude: &Core,
+    vertex_src: &[u8],
+    fragment_src: &[u8],
+    primitive: vk::PrimitiveTopology,
+    render_pass: vk::RenderPass,
+    pipeline_layout: vk::PipelineLayout,
+) -> Result<vk::Pipeline> {
+    // Create shader modules
+    let vert_decoded = erupt::utils::decode_spv(vertex_src)?;
+    let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&vert_decoded);
+    let vertex = unsafe {
+        prelude
+            .device
+            .create_shader_module(&create_info, None, None)
+    }
+    .result()?;
+
+    let frag_decoded = erupt::utils::decode_spv(fragment_src)?;
+    let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&frag_decoded);
+    let fragment = unsafe {
+        prelude
+            .device
+            .create_shader_module(&create_info, None, None)
+    }
+    .result()?;
+
+    // Build pipeline
+    let vertex_input = vk::PipelineVertexInputStateCreateInfoBuilder::new()
+        .vertex_attribute_descriptions(&[])
+        .vertex_binding_descriptions(&[]);
+
+    let input_assembly = vk::PipelineInputAssemblyStateCreateInfoBuilder::new()
+        .topology(primitive)
+        .primitive_restart_enable(false);
+
+    let viewport_state = vk::PipelineViewportStateCreateInfoBuilder::new()
+        .viewport_count(1)
+        .scissor_count(1);
+
+    let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+    let dynamic_state =
+        vk::PipelineDynamicStateCreateInfoBuilder::new().dynamic_states(&dynamic_states);
+
+    let rasterizer = vk::PipelineRasterizationStateCreateInfoBuilder::new()
+        .depth_clamp_enable(false)
+        .rasterizer_discard_enable(false)
+        .polygon_mode(vk::PolygonMode::FILL)
+        .line_width(1.0)
+        .cull_mode(vk::CullModeFlags::BACK)
+        .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
+        .depth_clamp_enable(false);
+
+    let multisampling = vk::PipelineMultisampleStateCreateInfoBuilder::new()
+        .sample_shading_enable(false)
+        .rasterization_samples(vk::SampleCountFlagBits::_1);
+
+    let color_blend_attachments = [vk::PipelineColorBlendAttachmentStateBuilder::new()
+        .color_write_mask(
+            vk::ColorComponentFlags::R
+                | vk::ColorComponentFlags::G
+                | vk::ColorComponentFlags::B
+                | vk::ColorComponentFlags::A,
+        )
+        .blend_enable(false)];
+    let color_blending = vk::PipelineColorBlendStateCreateInfoBuilder::new()
+        .logic_op_enable(false)
+        .attachments(&color_blend_attachments);
+
+    let entry_point = std::ffi::CString::new("main")?;
+
+    let shader_stages = [
+        vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::VERTEX)
+            .module(vertex)
+            .name(&entry_point),
+        vk::PipelineShaderStageCreateInfoBuilder::new()
+            .stage(vk::ShaderStageFlagBits::FRAGMENT)
+            .module(fragment)
+            .name(&entry_point),
+    ];
+
+    let depth_stencil_state = vk::PipelineDepthStencilStateCreateInfoBuilder::new()
+        .depth_test_enable(true)
+        .depth_write_enable(true)
+        .depth_compare_op(vk::CompareOp::LESS)
+        .depth_bounds_test_enable(false)
+        .stencil_test_enable(false);
+
+    let create_info = vk::GraphicsPipelineCreateInfoBuilder::new()
+        .stages(&shader_stages)
+        .vertex_input_state(&vertex_input)
+        .input_assembly_state(&input_assembly)
+        .viewport_state(&viewport_state)
+        .rasterization_state(&rasterizer)
+        .multisample_state(&multisampling)
+        .color_blend_state(&color_blending)
+        .depth_stencil_state(&depth_stencil_state)
+        .dynamic_state(&dynamic_state)
+        .layout(pipeline_layout)
+        .render_pass(render_pass)
+        .subpass(0);
+
+    let pipeline = unsafe {
+        prelude
+            .device
+            .create_graphics_pipelines(None, &[create_info], None)
+    }
+    .result()?[0];
+
+    unsafe {
+        prelude.device.destroy_shader_module(Some(fragment), None);
+        prelude.device.destroy_shader_module(Some(vertex), None);
+    }
+
+    Ok(pipeline)
 }

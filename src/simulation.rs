@@ -429,6 +429,10 @@ impl ErosionSim {
         self.heightmap.instance()
     }
 
+    pub fn size(&self) -> SimulationSize {
+        self.sim_size
+    }
+
     //pub fn download_droplets(&mut self) -> Vec<Particle> {}
     //pub fn download_heightmap(&mut self) -> Vec<f32> {}
 

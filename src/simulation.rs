@@ -139,9 +139,9 @@ impl ErosionSim {
         let ci = vk::BufferCreateInfoBuilder::new()
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .size(init_settings_size.max(sim_settings_size))
-            .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
+            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
 
-        let settings_buf = ManagedBuffer::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
+        let settings_buf = ManagedBuffer::new(core.clone(), ci, UsageFlags::UPLOAD)?;
 
         // Descriptors
         // Pool:
@@ -248,7 +248,7 @@ impl ErosionSim {
 
         let heightmap_image_infos = [vk::DescriptorImageInfoBuilder::new()
             .image_view(heightmap_view)
-            .image_layout(vk::ImageLayout::UNDEFINED)];
+            .image_layout(vk::ImageLayout::GENERAL)];
 
         // Create erosion view
         let create_info = vk::ImageViewCreateInfoBuilder::new()
@@ -262,7 +262,7 @@ impl ErosionSim {
 
         let erosion_image_infos = [vk::DescriptorImageInfoBuilder::new()
             .image_view(erosion_view)
-            .image_layout(vk::ImageLayout::UNDEFINED)];
+            .image_layout(vk::ImageLayout::GENERAL)];
 
         // Descriptor buffer vies
         let droplets_info = [vk::DescriptorBufferInfoBuilder::new()
@@ -339,6 +339,8 @@ impl ErosionSim {
     pub fn reset(&mut self, cmd: vk::CommandBuffer, settings: &InitSettings) -> Result<()> {
         // Upload init settings to settings buffer (mind the weird uniform buffer thing!)
         // Write init commands + appropriate barrier for a step.. ?
+        // WAIT FOR QUEUE IDLE! This is important since you need the settings UBO to have been
+        // written to and NOT in use when it is written for the step...
         todo!()
     }
 

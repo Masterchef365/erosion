@@ -8,6 +8,7 @@ layout (binding = 0) uniform SceneData {
 layout (binding = 1) buffer Droplets {
     Droplet droplets[];
 };
+
 layout (binding = 2) uniform sampler2D heightmap;
 ```
 

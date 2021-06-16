@@ -13,10 +13,15 @@ layout (binding = 1) buffer Droplets {
 };
 
 float rand(vec2 c){
-    return fract(sin(dot(c.xy, vec2(12.9898,78.233 + seed))) * 43758.5453);
+    return fract(sin(dot(c.xy, vec2(19.9898,71.233 + seed))) * 4758.5453);
 }
 
 void main() {
     uint gid = gl_GlobalInvocationID.x;
-    droplets[gid].pos = 
+    droplets[gid].pos = vec2(rand(vec2(1., gid)), rand(vec2(gid, 1.)));
+    droplets[gid].dir = vec2(rand(vec2(2., gid)), rand(vec2(gid, 2.)));
+    // TODO: Add these to the config!
+    droplets[gid].vel = 1.;
+    droplets[gid].water = 1.;
+    droplets[gid].sediment = 0.;
 }

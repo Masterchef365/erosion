@@ -20,7 +20,7 @@ float blur5(sampler2D image, vec2 uv, vec2 resolution, vec2 direction) {
 }
 */
 
-const int KERNEL_SIZE = 1;
+const int KERNEL_SIZE = 2;
 const int KERNEL_WIDTH = KERNEL_SIZE * 2 + 1;
 const int KERNEL_AREA = KERNEL_SIZE * KERNEL_SIZE;
 

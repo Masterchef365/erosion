@@ -391,6 +391,17 @@ impl ErosionSim {
 
             // Iteration loop
             for _ in 0..iters {
+                // Clear erosion image
+                self.core.device.cmd_clear_color_image(
+                    cmd,
+                    self.erosion.instance(),
+                    vk::ImageLayout::GENERAL,
+                    &vk::ClearColorValue {
+                        float32: [0.; 4],
+                    },
+                    &[img_subresource.into_builder()],
+                );
+
                 // Launch sim step kernel
                 self.core.device.cmd_bind_pipeline(
                     cmd,

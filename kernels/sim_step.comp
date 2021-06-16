@@ -30,5 +30,7 @@ layout (binding = 3, r32f) uniform image2D erosionmap;
 void main() {
     uint gid = gl_GlobalInvocationID.x;
     droplets[gid].pos += droplets[gid].dir / 1000.;
-    imageStore(erosionmap, ivec2(droplets[gid].pos * imageSize(erosionmap)), vec4(0.001, 0., 0., 0.));
+    ivec2 imgpos = ivec2(droplets[gid].pos * imageSize(erosionmap));
+    imageStore(erosionmap, imgpos, vec4(-0.001));
+    //imageAtomicExchange(erosionmap, imgpos, -0.0001);
 }

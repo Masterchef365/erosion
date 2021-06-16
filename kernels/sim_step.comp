@@ -40,21 +40,59 @@ vec2 gradient(vec2 pos) {
     );
 }
 
+// Particles on a gradient with magnitude less than this will be re-initialized
+const float GRADIENT_KILLZONE = 0.0005;
+const float SPEED = 1. / 1000.;
+const float SEDIMENT_RATE = SPEED;
+
 void main() {
+    // Image positioning
     uint gid = gl_GlobalInvocationID.x;
+    ivec2 img_size = imageSize(heightmap);
+    vec2 old_img_pos = droplets[gid].pos * img_size;
 
-    vec2 old_img_pos = droplets[gid].pos * imageSize(heightmap);
-
+    // Calculate gradient and re-init if dead
     vec2 grad = gradient(old_img_pos);
-    if (length(grad) < 0.0005) {
+    bool gradient_kill = length(grad) < GRADIENT_KILLZONE;
+    bool bounds_check_fail = any(greaterThan(old_img_pos, img_size)) || any(lessThan(old_img_pos, ivec2(0)));
+    if (gradient_kill || bounds_check_fail) {
         droplets[gid] = init_droplet(old_img_pos + gid);
         return;
     }
-
     grad = -normalize(grad);
 
-    vec2 dir = mix(grad, droplets[gid].dir, 0.1);
-    droplets[gid].pos += dir / 1000.;
-    //imageStore(erosionmap, ivec2(old_img_pos), vec4(-0.0005));
-    //imageAtomicExchange(erosionmap, imgpos, -0.0001);
+    // Update position
+    vec2 dir = mix(grad, droplets[gid].dir, inertia);
+    vec2 new_pos = droplets[gid].pos + dir * SPEED;
+    droplets[gid].pos = new_pos;
+    vec2 new_img_pos = new_pos * img_size;
+
+    // Calculate height diff
+    float height_old = imageLoad(heightmap, ivec2(old_img_pos)).x;
+    float height_new = imageLoad(heightmap, ivec2(droplets[gid].pos)).x;
+    float height_diff = height_new - height_old;
+
+    // Calculate capacity
+    float capacity = 
+        max(-height_diff, min_slope)
+        * droplets[gid].vel
+        * droplets[gid].water
+        * capacity_const;
+    
+    // Calculate sediment diff
+    float sediment_diff = 0.;
+    if (droplets[gid].sediment > capacity) {
+        sediment_diff = (droplets[gid].sediment - capacity) * deposition;
+    } else {
+        sediment_diff = -min((capacity - droplets[gid].sediment) * erosion, -height_diff);
+    }
+    droplets[gid].sediment -= sediment_diff;
+
+    imageStore(erosionmap, ivec2(old_img_pos), vec4(SEDIMENT_RATE * sediment_diff));
+
+    // Calculate new velocity 
+    droplets[gid].vel = sqrt(pow(droplets[gid].vel, 2) + height_diff * gravity);
+
+    // Calculate evaporation 
+    droplets[gid].water *= 1. - evaporation;
 }

@@ -379,6 +379,56 @@ impl ErosionSim {
                 &image_memory_barriers,
             );
 
+            // Bind descriptor set
+            self.core.device.cmd_bind_descriptor_sets(
+                cmd, 
+                vk::PipelineBindPoint::COMPUTE, 
+                self.pipeline_layout, 
+                0, 
+                &[self.descriptor_set], 
+                &[]
+            );
+
+            // Iteration loop
+            for _ in 0..iters {
+                // Launch sim step kernel
+                self.core.device.cmd_bind_pipeline(
+                    cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    self.sim_step,
+                );
+                self.core.device.cmd_dispatch(
+                    cmd,
+                    (self.sim_size.droplets / KERNEL_LOCAL_X) + 1,
+                    1,
+                    1,
+                );
+
+                // Launch erosion kernel
+                self.core.device.cmd_bind_pipeline(
+                    cmd,
+                    vk::PipelineBindPoint::COMPUTE,
+                    self.erosion_blur,
+                );
+                self.core.device.cmd_dispatch(
+                    cmd,
+                    (self.sim_size.width / KERNEL_LOCAL_X) + 1,
+                    (self.sim_size.height / KERNEL_LOCAL_X) + 1,
+                    1,
+                );
+                
+                // TODO: Make memory available
+                self.core.device.cmd_pipeline_barrier(
+                    cmd,
+                    vk::PipelineStageFlags::COMPUTE_SHADER,
+                    vk::PipelineStageFlags::COMPUTE_SHADER,
+                    None,
+                    &[],
+                    &[],
+                    &[],
+                );
+            }
+
             // Transition heightmap and erosion images to SHADER_READ_ONLY_OPTIMAL
             let image_memory_barriers = [
                 vk::ImageMemoryBarrierBuilder::new()

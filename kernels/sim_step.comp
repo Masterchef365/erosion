@@ -27,10 +27,27 @@ layout (binding = 1) buffer Droplets {
 layout (binding = 2, r32f) uniform image2D heightmap;
 layout (binding = 3, r32f) uniform image2D erosionmap;
 
+vec2 gradient(vec2 pos) {
+    vec2 imgpos_f32 = pos * vec2(imageSize(heightmap));
+    ivec2 int_pos = ivec2(imgpos_f32);
+    vec2 uv = fract(imgpos_f32);
+    float tl = imageLoad(heightmap, int_pos + ivec2(0, 0)).r;
+    float tr = imageLoad(heightmap, int_pos + ivec2(1, 0)).r;
+    float bl = imageLoad(heightmap, int_pos + ivec2(0, 1)).r;
+    float br = imageLoad(heightmap, int_pos + ivec2(1, 1)).r;
+    return vec2(
+        mix(tr - tl, br - bl, uv.y),
+        mix(bl - tl, br - tr, uv.x)
+    );
+}
+
 void main() {
     uint gid = gl_GlobalInvocationID.x;
-    droplets[gid].pos += droplets[gid].dir / 1000.;
+    vec2 grad = normalize(gradient(droplets[gid].pos));
+
+    vec2 dir = mix(grad, droplets[gid].dir, 0.);
+    droplets[gid].pos += dir / 1000.;
     ivec2 imgpos = ivec2(droplets[gid].pos * imageSize(erosionmap));
-    imageStore(erosionmap, imgpos, vec4(-0.01 * cos(droplets[gid].pos.x * 8.)));
+    //imageStore(erosionmap, imgpos, vec4(-0.01));
     //imageAtomicExchange(erosionmap, imgpos, -0.0001);
 }

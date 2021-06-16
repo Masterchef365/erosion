@@ -345,7 +345,7 @@ impl ErosionSim {
         iters: u32,
     ) -> Result<()> {
         // Upload sim settings to settings buffer (mind the weird uniform buffer thing!)
-        // 
+        // Barrier to transition the heightmap image to SHADER_READ_ONLY_OPTIMAL
         todo!()
     }
 
@@ -353,10 +353,41 @@ impl ErosionSim {
         // Update settings buffer (TODO: Barrier?)
         self.settings_buf.write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
 
+        let img_subresource = vk::ImageSubresourceRangeBuilder::new()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1)
+            .build();
+
+        let image_memory_barriers = [
+            vk::ImageMemoryBarrierBuilder::new()
+                .image(self.heightmap.instance())
+                .subresource_range(img_subresource)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::GENERAL),
+            vk::ImageMemoryBarrierBuilder::new()
+                .image(self.erosion.instance())
+                .subresource_range(img_subresource)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::GENERAL)
+        ];
+
         unsafe {
             self.core.device.reset_command_buffer(cmd, None).result()?;
             let bi = vk::CommandBufferBeginInfoBuilder::new();
             self.core.device.begin_command_buffer(cmd, &bi).result()?;
+
+            self.core.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                None,
+                &[],
+                &[],
+                &image_memory_barriers,
+            );
 
             self.core.device.cmd_bind_descriptor_sets(
                 cmd, 

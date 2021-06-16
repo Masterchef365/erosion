@@ -78,7 +78,7 @@ void main() {
     }
     float hill_height = max(0., hill_peak - dist * hill_falloff);
 
-    float height = perlin_height + hill_height;
+    float height = perlin_height * 0.2 + hill_height * 0.5;
     imageStore(heightmap, img_pos, vec4(height));
     imageStore(erosionmap, img_pos, vec4(0.));
 }

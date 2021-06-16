@@ -9,7 +9,6 @@ pub const HEIGHT_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 pub const EROSION_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 
 pub struct ErosionSim {
-    hills: ManagedBuffer,
     droplets: ManagedBuffer,
     erosion: ManagedImage,
     heightmap: ManagedImage,
@@ -24,13 +23,17 @@ pub struct ErosionSim {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct InitSettings {
     /// Random seed
-    pub seed: u64,
-    /// Noise scale
-    pub noise_scale: f32,
+    pub seed: f32,
+    /// Noise resolution
+    pub noise_res: i32,
     /// Noise vertical amplitude
     pub noise_amplitude: f32,
+    /// Hill peak height
+    pub hill_peak: f32,
     /// Falloff rate for the curve
     pub hill_falloff: f32,
+    /// Number of hills to consider
+    pub n_hills: i32,
 }
 
 // TODO: Builder pattern?
@@ -81,7 +84,7 @@ impl ErosionSim {
         size: SimulationSize,
         settings: &InitSettings,
     ) -> Result<Self> {
-        // Image settings
+        // Create erosion and heightmap images
         let extent = vk::Extent3DBuilder::new()
             .width(size.width)
             .height(size.height)
@@ -103,6 +106,9 @@ impl ErosionSim {
 
         let erosion = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
         let heightmap = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
+
+        // Create hill and droplet buffers
+
 
         let instance = Self {
             erosion,

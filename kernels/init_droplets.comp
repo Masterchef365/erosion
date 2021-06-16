@@ -1,0 +1,22 @@
+#version 450
+layout (local_size_x = 32) in;
+
+#include "droplet.glsl"
+
+layout (binding = 0) uniform Settings {
+    // Random seed
+    float seed;
+};
+
+layout (binding = 1) buffer Droplets {
+    Droplet droplets[];
+};
+
+float rand(vec2 c){
+    return fract(sin(dot(c.xy, vec2(12.9898,78.233 + seed))) * 43758.5453);
+}
+
+void main() {
+    uint gid = gl_GlobalInvocationID.x;
+    droplets[gid].pos = 
+}

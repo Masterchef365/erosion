@@ -8,15 +8,6 @@ layout(binding = 0) uniform Animation {
     float anim;
 };
 
-/*
-layout(binding = 0) uniform CameraUbo {
-};
-
-layout(push_constant) uniform Model {
-    mat4 model;
-};
-*/
-
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 

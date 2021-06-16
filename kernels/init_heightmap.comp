@@ -1,0 +1,80 @@
+#version 450
+layout (local_size_x = 32, local_size_y = 32) in;
+
+layout (binding = 0) uniform Settings {
+    // Random seed
+    float seed;
+    // Noise resolution
+    int noise_res;
+    // Noise vertical amplitude
+    float noise_amplitude;
+    // Hill peak height
+    float hill_peak;
+    // Falloff rate for the curve
+    float hill_falloff;
+    // Number of hills to consider
+    int n_hills;
+};
+
+layout (binding = 3, r32f) uniform image2D heightmap;
+
+
+const float PI = 3.141592;
+
+float rand(vec2 c){
+    return fract(sin(dot(c.xy, vec2(12.9898,78.233 + seed))) * 43758.5453);
+}
+
+// https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83
+float noise(vec2 p, float unit){
+    vec2 ij = floor(p/unit);
+    vec2 xy = mod(p,unit)/unit;
+    //xy = 3.*xy*xy-2.*xy*xy*xy;
+    xy = .5*(1.-cos(PI*xy));
+    float a = rand((ij+vec2(0.,0.)));
+    float b = rand((ij+vec2(1.,0.)));
+    float c = rand((ij+vec2(0.,1.)));
+    float d = rand((ij+vec2(1.,1.)));
+    float x1 = mix(a, b, xy.x);
+    float x2 = mix(c, d, xy.x);
+    return mix(x1, x2, xy.y);
+}
+
+float pNoise(vec2 p, int res){
+    const float persistance = 0.5;
+    float n = 0.3;
+    float normK = 0.;
+    float f = 4.;
+    float amp = 1.;
+    int iCount = 0;
+    for (int i = 0; i<50; i++){
+        n+=amp*noise(p, 1./f);
+        f*=2.;
+        normK+=amp;
+        amp*=persistance;
+        if (iCount == res) break;
+        iCount++;
+    }
+    float nf = n/normK;
+    return nf*nf*nf*nf;
+}
+
+void main() {
+    ivec2 img_pos = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 img_size = imageSize(heightmap);
+    // Bounds check
+    if (any(greaterThan(img_pos, img_size))) return;
+
+    vec2 uv = vec2(img_pos) / img_size;
+    float perlin_height = noise_amplitude * pNoise(uv, noise_res);
+
+    float dist = 9999999.;
+    for (int i = 1; i <= n_hills; i++) {
+        vec2 pos = vec2(rand(vec2(i, 1.)), rand(vec2(1., i)));
+        dist = min(distance(uv, pos), dist);
+    }
+    float hill_height = max(0., hill_peak - dist * hill_falloff);
+
+    float height = perlin_height + hill_height;
+    imageStore(heightmap, img_pos, vec4(height));
+}

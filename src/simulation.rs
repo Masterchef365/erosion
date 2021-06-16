@@ -13,13 +13,19 @@ pub struct ErosionSim {
     erosion: ManagedImage,
     heightmap: ManagedImage,
 
+    descriptor_set: vk::DescriptorSet,
+    descriptor_pool: vk::DescriptorPool,
+    descriptor_set_layout: vk::DescriptorSetLayout,
+
     init_particles: vk::Pipeline,
     init_heightmap: vk::Pipeline,
     sim_step: vk::Pipeline,
     erosion_blur: vk::Pipeline,
+
     core: SharedCore,
 }
 
+#[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct InitSettings {
     /// Random seed
@@ -37,6 +43,7 @@ pub struct InitSettings {
 }
 
 // TODO: Builder pattern?
+#[repr(C)]
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
     /// Inertia
@@ -55,7 +62,8 @@ pub struct SimulationSettings {
     pub evaporation: f32, // TODO: 1- evap for speed!
 }
 
-/*
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Droplet {
     /// Position
     pos: [f32; 2],
@@ -68,7 +76,6 @@ pub struct Droplet {
     /// Sediment
     sediment: f32,
 }
-*/
 
 struct SimulationSize {
     width: u32,
@@ -104,15 +111,23 @@ impl ErosionSim {
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
-        let erosion = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
-        let heightmap = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
+        let erosion = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
+        let heightmap = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
 
-        // Create hill and droplet buffers
+        // Create droplet buffer
+        let ci = vk::BufferCreateInfoBuilder::new()
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .size(size.droplets as u64 * std::mem::size_of::<Droplet>() as u64)
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
 
+        let droplets = ManagedBuffer::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
+
+        // Create descriptor set
 
         let instance = Self {
             erosion,
             heightmap,
+            droplets,
             core,
         };
 

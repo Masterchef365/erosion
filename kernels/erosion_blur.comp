@@ -1,8 +1,8 @@
 #version 450
 layout (local_size_x = 32, local_size_y = 32) in;
 
-layout (binding = 3, r32f) uniform image2D heightmap;
-layout (binding = 4, r32f) uniform readonly image2D erosionmap;
+layout (binding = 2, r32f) uniform image2D heightmap;
+layout (binding = 3, r32f) uniform readonly image2D erosionmap;
 
 /*
 layout (push_constant) uniform Direction {

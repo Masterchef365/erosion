@@ -1,7 +1,6 @@
 use anyhow::{Result, Context};
 use watertender::{
     memory::{ManagedBuffer, ManagedImage, UsageFlags},
-    staging_buffer::StagingBuffer,
     vk, SharedCore, Core,
 };
 
@@ -10,14 +9,15 @@ pub const EROSION_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 
 const SETTINGS_BINDING: u32 = 0;
 const DROPLETS_BINDING: u32 = 1;
-const HEIGHT_MAP_SAMPLER_BINDING: u32 = 2;
-const HEIGHT_MAP_BINDING: u32 = 3;
-const EROSION_MAP_BINDING: u32 = 4;
+const HEIGHT_MAP_BINDING: u32 = 2;
+const EROSION_MAP_BINDING: u32 = 3;
+//const HEIGHT_MAP_SAMPLER_BINDING: u32 = 4;
 
 pub struct ErosionSim {
     droplets: ManagedBuffer,
     erosion: ManagedImage,
     heightmap: ManagedImage,
+    settings_buf: ManagedBuffer,
 
     descriptor_set: vk::DescriptorSet,
     descriptor_pool: vk::DescriptorPool,
@@ -96,7 +96,7 @@ impl ErosionSim {
         core: SharedCore,
         cmd: vk::CommandBuffer,
         size: &SimulationSize,
-        settings: &InitSettings,
+        init_settings: &InitSettings,
     ) -> Result<Self> {
         // Create erosion and heightmap images
         let extent = vk::Extent3DBuilder::new()
@@ -129,6 +129,17 @@ impl ErosionSim {
 
         let droplets = ManagedBuffer::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
 
+        // Create settings buffer
+        let init_settings_size = std::mem::size_of::<InitSettings>() as u64;
+        let sim_settings_size = std::mem::size_of::<SimulationSettings>() as u64;
+
+        let ci = vk::BufferCreateInfoBuilder::new()
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .size(init_settings_size.max(sim_settings_size))
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
+
+        let settings_buf = ManagedBuffer::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS)?;
+
         // Descriptors
         // Pool:
         let pool_sizes = [
@@ -136,14 +147,14 @@ impl ErosionSim {
             ._type(vk::DescriptorType::STORAGE_IMAGE)
             .descriptor_count(2),
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .descriptor_count(1),
-            vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::STORAGE_BUFFER)
             .descriptor_count(1),
             vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(1)
+            /*vk::DescriptorPoolSizeBuilder::new()
+            ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1),*/
         ];
         let create_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .pool_sizes(&pool_sizes)
@@ -164,11 +175,6 @@ impl ErosionSim {
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::COMPUTE),
             vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(HEIGHT_MAP_SAMPLER_BINDING)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::COMPUTE),
-            vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(HEIGHT_MAP_BINDING)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .descriptor_count(1)
@@ -178,6 +184,11 @@ impl ErosionSim {
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::COMPUTE),
+            /*vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(HEIGHT_MAP_SAMPLER_BINDING)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::COMPUTE),*/
         ];
 
         let create_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
@@ -193,7 +204,7 @@ impl ErosionSim {
 
         let descriptor_set = unsafe { core.device.allocate_descriptor_sets(&create_info) }.result()?[0];
 
-        // Pipelines
+        // Pipeline
         let create_info =
             vk::PipelineLayoutCreateInfoBuilder::new()
             .push_constant_ranges(&[])
@@ -206,7 +217,10 @@ impl ErosionSim {
         let sim_step = load_pipeline(&core, "kernels/sim_step.comp.spv", pipeline_layout)?;
         let erosion_blur = load_pipeline(&core, "kernels/erosion_blur.comp.spv", pipeline_layout)?;
 
+        // TODO: Write descriptor sets!
+
         let mut instance = Self {
+            settings_buf,
             descriptor_set,
             descriptor_pool,
             descriptor_set_layout,
@@ -221,7 +235,7 @@ impl ErosionSim {
             erosion_blur,
         };
 
-        instance.reset(cmd, settings)?;
+        instance.reset(cmd, init_settings)?;
         Ok(instance)
     }
 
@@ -231,18 +245,22 @@ impl ErosionSim {
         settings: &SimulationSettings,
         iters: u32,
     ) -> Result<()> {
+        // Upload sim settings to settings buffer (mind the weird uniform buffer thing!)
+        // 
         todo!()
     }
 
     pub fn reset(&mut self, cmd: vk::CommandBuffer, settings: &InitSettings) -> Result<()> {
+        // Upload init settings to settings buffer (mind the weird uniform buffer thing!)
+        // Write init commands + appropriate barrier for a step.. ?
         todo!()
     }
 
-    pub fn droplet_buffer_vk(&mut self) -> vk::Buffer {
+    pub fn droplet_buffer_vk(&self) -> vk::Buffer {
         self.droplets.instance()
     }
 
-    pub fn heightmap_image_vk(&mut self) -> vk::Image {
+    pub fn heightmap_image_vk(&self) -> vk::Image {
         self.heightmap.instance()
     }
 

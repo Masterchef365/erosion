@@ -1,6 +1,8 @@
 #version 450
 layout (local_size_x = 32, local_size_y = 32) in;
 
+// TODO: This should really be called "Init map" since it also writes to the erosion map.
+
 layout (binding = 0) uniform Settings {
     // Random seed
     float seed;
@@ -16,7 +18,8 @@ layout (binding = 0) uniform Settings {
     int n_hills;
 };
 
-layout (binding = 3, r32f) uniform image2D heightmap;
+layout (binding = 2, r32f) uniform image2D heightmap;
+layout (binding = 3, r32f) uniform image2D erosionmap;
 
 
 const float PI = 3.141592;
@@ -77,4 +80,5 @@ void main() {
 
     float height = perlin_height + hill_height;
     imageStore(heightmap, img_pos, vec4(height));
+    imageStore(erosionmap, img_pos, vec4(0.));
 }

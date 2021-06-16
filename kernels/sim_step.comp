@@ -24,9 +24,8 @@ layout (binding = 1) buffer Droplets {
     Droplet droplets[];
 };
 
-layout (binding = 2) uniform sampler2D heightmap;
-
-layout (binding = 4, r32f) uniform image2D erosionmap;
+layout (binding = 2, r32f) uniform image2D heightmap;
+layout (binding = 3, r32f) uniform image2D erosionmap;
 
 void main() {
 }

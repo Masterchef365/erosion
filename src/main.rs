@@ -7,8 +7,9 @@ mod simulation;
 use simulation::*;
 
 struct App {
-    rainbow_cube: ManagedMesh,
-    pipeline: vk::Pipeline,
+    terrain_mesh: ManagedMesh,
+
+    terrain_shader: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
 
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -45,27 +46,45 @@ impl MainLoop for App {
     fn new(core: &SharedCore, mut platform: Platform<'_>) -> Result<Self> {
         let mut starter_kit = StarterKit::new(core.clone(), &mut platform)?;
 
+        // Simulation setup
+        let sim_size = SimulationSize {
+            width: 400,
+            height: 400,
+            droplets: 10 * 32,
+        };
+
+        let init_settings = InitSettings {
+            seed: 1.0,
+            noise_res: 6,
+            noise_amplitude: 1.,
+            hill_peak: 1.,
+            hill_falloff: 3.,
+            n_hills: 4,
+        };
+
+        let simulation = ErosionSim::new(
+            starter_kit.core.clone(),
+            starter_kit.current_command_buffer(),
+            &sim_size,
+            &init_settings,
+        )?;
+
         // Camera
         let camera = MultiPlatformCamera::new(&mut platform);
 
         // Image uploads
         let image_layout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-        let command_buffer = starter_kit.current_command_buffer(); // TODO: This probably breaks stuff lmaoo
 
-        let (data, info) = read_image("heightmap.png").context("Failed to read image")?;
-        let (cube_tex, subresource_range) = starter_kit.staging_buffer.upload_image(
-            command_buffer,
-            info.width,
-            info.height,
-            bytemuck::cast_slice(data.as_slice()),
-            TEXTURE_FORMAT,
-            vk::ImageUsageFlags::SAMPLED,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        )?;
+        let subresource_range = vk::ImageSubresourceRangeBuilder::new()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
 
         // Create image view
         let create_info = vk::ImageViewCreateInfoBuilder::new()
-            .image(cube_tex.instance())
+            .image(simulation.heightmap_image_vk())
             .view_type(vk::ImageViewType::_2D)
             .format(TEXTURE_FORMAT)
             .subresource_range(*subresource_range)
@@ -100,11 +119,17 @@ impl MainLoop for App {
 
         // Create descriptor set layout
         const FRAME_DATA_BINDING: u32 = 0;
+        const DROPLET_BINDING: u32 = 2;
         const IMAGE_BINDING: u32 = 2;
         let bindings = [
             vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(FRAME_DATA_BINDING)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS),
+            vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(DROPLET_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS),
             vk::DescriptorSetLayoutBindingBuilder::new()
@@ -129,13 +154,16 @@ impl MainLoop for App {
                 ._type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(FRAMES_IN_FLIGHT as _),
             vk::DescriptorPoolSizeBuilder::new()
+                ._type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(FRAMES_IN_FLIGHT as _),
+            vk::DescriptorPoolSizeBuilder::new()
                 ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .descriptor_count(FRAMES_IN_FLIGHT as _),
         ];
 
         let create_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .pool_sizes(&pool_sizes)
-            .max_sets((FRAMES_IN_FLIGHT * 2) as _);
+            .max_sets(FRAMES_IN_FLIGHT as _);
 
         let descriptor_pool =
             unsafe { core.device.create_descriptor_pool(&create_info, None, None) }.result()?;
@@ -155,6 +183,14 @@ impl MainLoop for App {
             .image_view(image_view)
             .sampler(sampler)];
 
+        // Droplet buffer info
+        let droplet_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
+            .buffer(simulation.droplet_buffer_vk())
+            .offset(0)
+            .range(vk::WHOLE_SIZE)
+        ];
+
+
         // Write descriptor sets
         for (frame, &descriptor_set) in descriptor_sets.iter().enumerate() {
             let frame_data_bi = [scene_ubo.descriptor_buffer_info(frame)];
@@ -162,6 +198,12 @@ impl MainLoop for App {
                 vk::WriteDescriptorSetBuilder::new()
                     .buffer_info(&frame_data_bi)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .dst_set(descriptor_set)
+                    .dst_binding(FRAME_DATA_BINDING)
+                    .dst_array_element(0),
+                vk::WriteDescriptorSetBuilder::new()
+                    .buffer_info(&droplet_buffer_info)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                     .dst_set(descriptor_set)
                     .dst_binding(FRAME_DATA_BINDING)
                     .dst_array_element(0),
@@ -205,8 +247,8 @@ impl MainLoop for App {
         .context("Failed to compile shader")?;
 
         // Mesh uploads
-        assert_eq!(info.width, info.height);
-        let size = info.width as i32;
+        assert_eq!(sim_size.width, sim_size.height);
+        let size = sim_size.width as i32;
         let scale = 0.1;
         let vertices = dense_grid_verts(size, scale);
         let indices = dense_grid_tri_indices(size);
@@ -215,28 +257,6 @@ impl MainLoop for App {
             starter_kit.command_buffers[0],
             &vertices,
             &indices,
-        )?;
-
-        let size = SimulationSize {
-            width: 400,
-            height: 400,
-            droplets: 10 * 32,
-        };
-
-        let init_settings = InitSettings {
-            seed: 1.0,
-            noise_res: 6,
-            noise_amplitude: 1.,
-            hill_peak: 1.,
-            hill_falloff: 3.,
-            n_hills: 4,
-        };
-
-        let simulation = ErosionSim::new(
-            starter_kit.core.clone(),
-            starter_kit.current_command_buffer(),
-            &size,
-            &init_settings,
         )?;
 
         Ok(Self {
@@ -248,8 +268,8 @@ impl MainLoop for App {
             anim: 0.0,
             pipeline_layout,
             scene_ubo,
-            rainbow_cube,
-            pipeline,
+            terrain_mesh: rainbow_cube,
+            terrain_shader: pipeline,
             starter_kit,
         })
     }
@@ -277,13 +297,13 @@ impl MainLoop for App {
             core.device.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline,
+                self.terrain_shader,
             );
 
             draw_meshes(
                 core,
                 command_buffer,
-                std::slice::from_ref(&&self.rainbow_cube),
+                std::slice::from_ref(&&self.terrain_mesh),
             );
         }
 
@@ -323,30 +343,6 @@ impl SyncMainLoop for App {
     fn winit_sync(&self) -> (vk::Semaphore, vk::Semaphore) {
         self.starter_kit.winit_sync()
     }
-}
-
-fn read_image(path: impl AsRef<Path>) -> Result<(Vec<f32>, png::OutputInfo)> {
-    let img = png::Decoder::new(std::fs::File::open(path)?);
-    let (info, mut reader) = img.read_info()?;
-
-    const CHANNELS: u32 = 1;
-    assert!(info.color_type == png::ColorType::Grayscale);
-    assert!(info.bit_depth == png::BitDepth::Eight);
-
-    let mut img_buffer = vec![0; info.buffer_size()];
-
-    assert_eq!(
-        info.buffer_size(),
-        (info.width * info.height * CHANNELS) as _
-    );
-    reader.next_frame(&mut img_buffer)?;
-
-    let img_buffer: Vec<f32> = img_buffer
-        .into_iter()
-        .map(|i| i as f32 / u8::MAX as f32)
-        .collect();
-
-    Ok((img_buffer, info))
 }
 
 fn dense_grid_verts(size: i32, scale: f32) -> Vec<Vertex> {

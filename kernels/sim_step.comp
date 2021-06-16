@@ -80,10 +80,11 @@ void main() {
     
     // Calculate sediment diff
     float sediment_diff = 0.;
-    if (droplets[gid].sediment > capacity) {
-        sediment_diff = (droplets[gid].sediment - capacity) * deposition;
+    float sediment = droplets[gid].sediment;
+    if (sediment > capacity) {
+        sediment_diff = (sediment - capacity) * deposition;
     } else {
-        sediment_diff = -max((capacity - droplets[gid].sediment) * erosion, -height_diff);
+        sediment_diff = -min((capacity - sediment) * erosion, -height_diff);
     }
     droplets[gid].sediment -= sediment_diff;
 

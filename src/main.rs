@@ -293,10 +293,10 @@ impl MainLoop for App {
         let sim_settings = SimulationSettings {
             inertia: 0.025,
             min_slope: 0.01,
-            capacity_const: 8.,
-            deposition: 0.1,
-            erosion: 0.001,
-            gravity: 0.5,
+            capacity_const: 1.0,
+            deposition: 1.0,
+            erosion: 0.0000000,
+            gravity: 0.1,
             evaporation: 0.05,
         };
 

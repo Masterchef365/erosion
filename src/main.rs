@@ -290,6 +290,20 @@ impl MainLoop for App {
         let cmd = self.starter_kit.begin_command_buffer(frame)?;
         let command_buffer = cmd.command_buffer;
 
+        let sim_settings = SimulationSettings {
+            inertia: 0.1,
+            min_slope: 0.1,
+            capacity_const: 4.,
+            deposition: 0.1,
+            erosion: 0.1,
+            gravity: 1.,
+            evaporation: 0.1,
+        };
+
+        self.simulation.step(command_buffer, &sim_settings, 1)?;
+
+        self.starter_kit.begin_render_pass(cmd.command_buffer, frame, [0., 0., 0., 1.]);
+
         unsafe {
             core.device.cmd_bind_descriptor_sets(
                 command_buffer,

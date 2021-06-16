@@ -344,9 +344,68 @@ impl ErosionSim {
         settings: &SimulationSettings,
         iters: u32,
     ) -> Result<()> {
-        // Upload sim settings to settings buffer (mind the weird uniform buffer thing!)
-        // Barrier to transition the heightmap image to SHADER_READ_ONLY_OPTIMAL
-        todo!()
+        self.settings_buf.write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
+
+        let img_subresource = vk::ImageSubresourceRangeBuilder::new()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1)
+            .build();
+
+        unsafe {
+            // Transition heightmap and erosion images to GENERAL
+            let image_memory_barriers = [
+                vk::ImageMemoryBarrierBuilder::new()
+                    .image(self.heightmap.instance())
+                    .subresource_range(img_subresource)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::GENERAL),
+                vk::ImageMemoryBarrierBuilder::new()
+                    .image(self.erosion.instance())
+                    .subresource_range(img_subresource)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::GENERAL)
+            ];
+
+            self.core.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                None,
+                &[],
+                &[],
+                &image_memory_barriers,
+            );
+
+            // Transition heightmap and erosion images to SHADER_READ_ONLY_OPTIMAL
+            let image_memory_barriers = [
+                vk::ImageMemoryBarrierBuilder::new()
+                    .image(self.heightmap.instance())
+                    .subresource_range(img_subresource)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
+                vk::ImageMemoryBarrierBuilder::new()
+                    .image(self.erosion.instance())
+                    .subresource_range(img_subresource)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            ];
+
+            self.core.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::COMPUTE_SHADER,
+                vk::PipelineStageFlags::ALL_GRAPHICS,
+                None,
+                &[],
+                &[],
+                &image_memory_barriers,
+            );
+
+        }
+
+        Ok(())
     }
 
     pub fn reset(&mut self, cmd: vk::CommandBuffer, settings: &InitSettings) -> Result<()> {

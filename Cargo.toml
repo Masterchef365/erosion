@@ -9,3 +9,4 @@ anyhow = "1"
 watertender = { path = "../watertender" }
 png = "0.16"
 bytemuck = "1.5"
+erupt = "0.18"

@@ -51,7 +51,7 @@ impl MainLoop for App {
         let sim_size = SimulationSize {
             width: 400,
             height: 400,
-            droplets: 10 * 32,
+            droplets: 1000 * 32,
         };
 
         let init_settings = InitSettings {

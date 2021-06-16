@@ -28,9 +28,8 @@ layout (binding = 2, r32f) uniform image2D heightmap;
 layout (binding = 3, r32f) uniform image2D erosionmap;
 
 vec2 gradient(vec2 pos) {
-    vec2 imgpos_f32 = pos * vec2(imageSize(heightmap));
-    ivec2 int_pos = ivec2(imgpos_f32);
-    vec2 uv = fract(imgpos_f32);
+    ivec2 int_pos = ivec2(pos);
+    vec2 uv = fract(pos);
     float tl = imageLoad(heightmap, int_pos + ivec2(0, 0)).r;
     float tr = imageLoad(heightmap, int_pos + ivec2(1, 0)).r;
     float bl = imageLoad(heightmap, int_pos + ivec2(0, 1)).r;
@@ -43,11 +42,15 @@ vec2 gradient(vec2 pos) {
 
 void main() {
     uint gid = gl_GlobalInvocationID.x;
-    vec2 grad = normalize(gradient(droplets[gid].pos));
 
-    vec2 dir = mix(grad, droplets[gid].dir, 0.);
+    vec2 old_img_pos = droplets[gid].pos * imageSize(heightmap);
+
+    vec2 grad = gradient(old_img_pos);
+    if (length(grad) < 0.001) return;
+    grad = -normalize(grad);
+
+    vec2 dir = mix(grad, droplets[gid].dir, 0.1);
     droplets[gid].pos += dir / 1000.;
-    ivec2 imgpos = ivec2(droplets[gid].pos * imageSize(erosionmap));
-    //imageStore(erosionmap, imgpos, vec4(-0.01));
+    imageStore(erosionmap, ivec2(old_img_pos), vec4(-0.0005));
     //imageAtomicExchange(erosionmap, imgpos, -0.0001);
 }

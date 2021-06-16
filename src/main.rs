@@ -49,9 +49,9 @@ impl MainLoop for App {
 
         // Simulation setup
         let sim_size = SimulationSize {
-            width: 400,
-            height: 400,
-            droplets: 1000 * 32,
+            width: 450,
+            height: 450,
+            droplets: 2000 * 32,
         };
 
         let init_settings = InitSettings {
@@ -295,7 +295,7 @@ impl MainLoop for App {
             min_slope: 0.01,
             capacity_const: 8.,
             deposition: 0.1,
-            erosion: 0.01,
+            erosion: 0.001,
             gravity: 0.5,
             evaporation: 0.05,
         };

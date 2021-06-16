@@ -86,7 +86,7 @@ pub struct Droplet {
 pub struct SimulationSize {
     pub width: u32,
     pub height: u32,
-    pub hills: u32,
+    //pub hills: u32,
     pub droplets: u32,
 }
 
@@ -94,7 +94,7 @@ impl ErosionSim {
     pub fn new(
         core: SharedCore,
         cmd: vk::CommandBuffer,
-        size: SimulationSize,
+        size: &SimulationSize,
         settings: &InitSettings,
     ) -> Result<Self> {
         // Create erosion and heightmap images

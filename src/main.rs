@@ -1,8 +1,8 @@
-use watertender::prelude::*;
+use anyhow::{Context, Result};
 use defaults::FRAMES_IN_FLIGHT;
-use anyhow::{Result, Context};
-use std::path::Path;
 use std::fs;
+use std::path::Path;
+use watertender::prelude::*;
 mod simulation;
 use simulation::*;
 
@@ -14,6 +14,8 @@ struct App {
     descriptor_sets: Vec<vk::DescriptorSet>,
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layout: vk::DescriptorSetLayout,
+
+    simulation: ErosionSim,
 
     scene_ubo: FrameDataUbo<SceneData>,
     camera: MultiPlatformCamera,
@@ -109,7 +111,7 @@ impl MainLoop for App {
                 .binding(IMAGE_BINDING)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
+                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS),
         ];
 
         let descriptor_set_layout_ci =
@@ -168,14 +170,13 @@ impl MainLoop for App {
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .dst_set(descriptor_set)
                     .dst_binding(IMAGE_BINDING)
-                    .dst_array_element(0)
+                    .dst_array_element(0),
             ];
 
             unsafe {
                 core.device.update_descriptor_sets(&writes, &[]);
             }
         }
-
 
         let descriptor_set_layouts = [descriptor_set_layout];
 
@@ -200,7 +201,8 @@ impl MainLoop for App {
             vk::PrimitiveTopology::TRIANGLE_LIST,
             starter_kit.render_pass,
             pipeline_layout,
-        ).context("Failed to compile shader")?;
+        )
+        .context("Failed to compile shader")?;
 
         // Mesh uploads
         assert_eq!(info.width, info.height);
@@ -215,8 +217,31 @@ impl MainLoop for App {
             &indices,
         )?;
 
+        let size = SimulationSize {
+            width: 400,
+            height: 400,
+            droplets: 10 * 32,
+        };
+
+        let init_settings = InitSettings {
+            seed: 1.0,
+            noise_res: 6,
+            noise_amplitude: 1.,
+            hill_peak: 1.,
+            hill_falloff: 3.,
+            n_hills: 4,
+        };
+
+        let simulation = ErosionSim::new(
+            starter_kit.core.clone(),
+            starter_kit.current_command_buffer(),
+            &size,
+            &init_settings,
+        )?;
+
         Ok(Self {
             camera,
+            simulation,
             descriptor_set_layout,
             descriptor_sets,
             descriptor_pool,
@@ -310,10 +335,16 @@ fn read_image(path: impl AsRef<Path>) -> Result<(Vec<f32>, png::OutputInfo)> {
 
     let mut img_buffer = vec![0; info.buffer_size()];
 
-    assert_eq!(info.buffer_size(), (info.width * info.height * CHANNELS) as _);
+    assert_eq!(
+        info.buffer_size(),
+        (info.width * info.height * CHANNELS) as _
+    );
     reader.next_frame(&mut img_buffer)?;
 
-    let img_buffer: Vec<f32> = img_buffer.into_iter().map(|i| i as f32 / u8::MAX as f32).collect();
+    let img_buffer: Vec<f32> = img_buffer
+        .into_iter()
+        .map(|i| i as f32 / u8::MAX as f32)
+        .collect();
 
     Ok((img_buffer, info))
 }
@@ -327,11 +358,7 @@ fn dense_grid_verts(size: i32, scale: f32) -> Vec<Vertex> {
             let size = size as f32;
             Vertex {
                 pos: [x * scale, 0., y * scale],
-                color: [
-                    ((x / size) + 1.) / 2.,
-                    ((y / size) + 1.) / 2.,
-                    0.
-                ],
+                color: [((x / size) + 1.) / 2., ((y / size) + 1.) / 2., 0.],
             }
         })
         .collect()

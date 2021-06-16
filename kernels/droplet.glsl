@@ -24,7 +24,7 @@ Droplet init_droplet(vec2 seed) {
     droplet.dir = vec2(
         rand(seed * vec2(13.13, 14.141)),
         rand(seed * vec2(25.12, 21.31))
-    );
+    ) * 2. - 1.;
     droplet.vel = 1.;
     droplet.water = 1.;
     droplet.sediment = 0.;

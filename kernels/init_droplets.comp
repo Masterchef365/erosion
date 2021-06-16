@@ -12,10 +12,6 @@ layout (binding = 1) buffer Droplets {
     Droplet droplets[];
 };
 
-float recenter(float v) {
-    return v * 2. - 1.;
-}
-
 void main() {
     uint gid = gl_GlobalInvocationID.x;
     droplets[gid] = init_droplet(vec2(gid, seed));

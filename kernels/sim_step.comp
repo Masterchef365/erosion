@@ -43,7 +43,7 @@ vec2 gradient(vec2 pos) {
 // Particles on a gradient with magnitude less than this will be re-initialized
 const float GRADIENT_KILLZONE = 0.0005;
 const float SPEED = 1. / 1000.;
-const float SEDIMENT_RATE = SPEED;
+const float SEDIMENT_RATE = 1. / 1000.;
 
 void main() {
     // Image positioning
@@ -53,18 +53,20 @@ void main() {
 
     // Calculate gradient and re-init if dead
     vec2 grad = gradient(old_img_pos);
-    bool gradient_kill = length(grad) < GRADIENT_KILLZONE;
+    vec2 dir = normalize(mix(-grad, droplets[gid].dir, inertia));
+
+    // Restart if direction is zero or out of bounds
     bool bounds_check_fail = any(greaterThan(old_img_pos, img_size)) || any(lessThan(old_img_pos, ivec2(0)));
-    if (gradient_kill || bounds_check_fail) {
+    if ((dir == vec2(0.)) || bounds_check_fail) {
         droplets[gid] = init_droplet(old_img_pos + gid);
         return;
     }
     grad = -normalize(grad);
 
     // Update position
-    vec2 dir = mix(grad, droplets[gid].dir, inertia);
     vec2 new_pos = droplets[gid].pos + dir * SPEED;
     droplets[gid].pos = new_pos;
+    droplets[gid].dir = dir;
     vec2 new_img_pos = new_pos * img_size;
 
     // Calculate height diff
@@ -84,7 +86,7 @@ void main() {
     if (droplets[gid].sediment > capacity) {
         sediment_diff = (droplets[gid].sediment - capacity) * deposition;
     } else {
-        sediment_diff = -min((capacity - droplets[gid].sediment) * erosion, -height_diff);
+        sediment_diff = -max((capacity - droplets[gid].sediment) * erosion, -height_diff);
     }
     droplets[gid].sediment -= sediment_diff;
 

@@ -291,13 +291,13 @@ impl MainLoop for App {
         let command_buffer = cmd.command_buffer;
 
         let sim_settings = SimulationSettings {
-            inertia: 0.1,
-            min_slope: 0.1,
-            capacity_const: 4.,
+            inertia: 0.025,
+            min_slope: 0.01,
+            capacity_const: 8.,
             deposition: 0.1,
-            erosion: 0.1,
-            gravity: 1.,
-            evaporation: 0.1,
+            erosion: 0.01,
+            gravity: 0.5,
+            evaporation: 0.05,
         };
 
         self.simulation.step(command_buffer, &sim_settings, 1)?;

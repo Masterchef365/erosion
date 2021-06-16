@@ -46,11 +46,15 @@ void main() {
     vec2 old_img_pos = droplets[gid].pos * imageSize(heightmap);
 
     vec2 grad = gradient(old_img_pos);
-    if (length(grad) < 0.001) return;
+    if (length(grad) < 0.0005) {
+        droplets[gid] = init_droplet(old_img_pos + gid);
+        return;
+    }
+
     grad = -normalize(grad);
 
     vec2 dir = mix(grad, droplets[gid].dir, 0.1);
     droplets[gid].pos += dir / 1000.;
-    imageStore(erosionmap, ivec2(old_img_pos), vec4(-0.0005));
+    //imageStore(erosionmap, ivec2(old_img_pos), vec4(-0.0005));
     //imageAtomicExchange(erosionmap, imgpos, -0.0001);
 }

@@ -12,21 +12,11 @@ layout (binding = 1) buffer Droplets {
     Droplet droplets[];
 };
 
-float rand(vec2 c){
-    return fract(sin(dot(c.xy, vec2(19.9898,71.233 + seed))) * 4758.5453);
-}
-
 float recenter(float v) {
     return v * 2. - 1.;
 }
 
 void main() {
     uint gid = gl_GlobalInvocationID.x;
-    droplets[gid].pos = vec2(rand(vec2(1., gid)), rand(vec2(gid, 1.)));
-    droplets[gid].dir = vec2(recenter(rand(vec2(2., gid))), recenter(rand(vec2(gid, 2.))));
-    // TODO: Add these to the settings!
-    // ... And/Or vary them randomly...
-    droplets[gid].vel = 1.;
-    droplets[gid].water = 1.;
-    droplets[gid].sediment = 0.;
+    droplets[gid] = init_droplet(vec2(gid, seed));
 }

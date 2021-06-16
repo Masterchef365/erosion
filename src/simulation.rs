@@ -22,6 +22,7 @@ pub struct ErosionSim {
     descriptor_set: vk::DescriptorSet,
     descriptor_pool: vk::DescriptorPool,
     descriptor_set_layout: vk::DescriptorSetLayout,
+    pipeline_layout: vk::PipelineLayout,
 
     init_droplets: vk::Pipeline,
     init_heightmap: vk::Pipeline,
@@ -193,15 +194,23 @@ impl ErosionSim {
         let descriptor_set = unsafe { core.device.allocate_descriptor_sets(&create_info) }.result()?[0];
 
         // Pipelines
-        let init_droplets = load_pipeline(&core, "kernels/init_droplets.comp.spv", &descriptor_set_layouts)?;
-        let init_heightmap = load_pipeline(&core, "kernels/init_heightmap.comp.spv", &descriptor_set_layouts)?;
-        let sim_step = load_pipeline(&core, "kernels/sim_step.comp.spv", &descriptor_set_layouts)?;
-        let erosion_blur = load_pipeline(&core, "kernels/erosion_blur.comp.spv", &descriptor_set_layouts)?;
+        let create_info =
+            vk::PipelineLayoutCreateInfoBuilder::new()
+            .push_constant_ranges(&[])
+            .set_layouts(&descriptor_set_layouts);
+        let pipeline_layout =
+            unsafe { core.device.create_pipeline_layout(&create_info, None, None) }.result()?;
+
+        let init_droplets = load_pipeline(&core, "kernels/init_droplets.comp.spv", pipeline_layout)?;
+        let init_heightmap = load_pipeline(&core, "kernels/init_heightmap.comp.spv", pipeline_layout)?;
+        let sim_step = load_pipeline(&core, "kernels/sim_step.comp.spv", pipeline_layout)?;
+        let erosion_blur = load_pipeline(&core, "kernels/erosion_blur.comp.spv", pipeline_layout)?;
 
         let mut instance = Self {
             descriptor_set,
             descriptor_pool,
             descriptor_set_layout,
+            pipeline_layout,
             erosion,
             heightmap,
             droplets,
@@ -244,7 +253,7 @@ impl ErosionSim {
     //pub fn upload_droplets(&mut self, droplets: &[Particle]);
 }
 
-fn load_pipeline(core: &Core, path: &str, descriptor_set_layouts: &[vk::DescriptorSetLayout]) -> Result<vk::Pipeline> {
+fn load_pipeline(core: &Core, path: &str, pipeline_layout: vk::PipelineLayout) -> Result<vk::Pipeline> {
     let device = &core.device;
 
     // Load shader
@@ -253,21 +262,6 @@ fn load_pipeline(core: &Core, path: &str, descriptor_set_layouts: &[vk::Descript
     let create_info = vk::ShaderModuleCreateInfoBuilder::new().code(&shader_decoded);
     let shader_module =
         unsafe { device.create_shader_module(&create_info, None, None) }.result()?;
-
-    // Pipeline
-    let push_constant_ranges = [
-        vk::PushConstantRangeBuilder::new()
-            .offset(0)
-            .stage_flags(vk::ShaderStageFlags::COMPUTE)
-            .size(2 * std::mem::size_of::<i32>() as u32)
-    ];
-
-    let create_info =
-        vk::PipelineLayoutCreateInfoBuilder::new()
-        .push_constant_ranges(&push_constant_ranges)
-        .set_layouts(&descriptor_set_layouts);
-    let pipeline_layout =
-        unsafe { device.create_pipeline_layout(&create_info, None, None) }.result()?;
 
     let entry_point = std::ffi::CString::new("main")?;
     let stage = vk::PipelineShaderStageCreateInfoBuilder::new()

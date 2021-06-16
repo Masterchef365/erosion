@@ -100,7 +100,7 @@ impl MainLoop for App {
 
         // Create descriptor set layout
         const FRAME_DATA_BINDING: u32 = 0;
-        const IMAGE_BINDING: u32 = 1;
+        const IMAGE_BINDING: u32 = 2;
         let bindings = [
             vk::DescriptorSetLayoutBindingBuilder::new()
                 .binding(FRAME_DATA_BINDING)

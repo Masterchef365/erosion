@@ -1,14 +1,24 @@
-use watertender::{
-    memory::{ManagedBuffer, ManagedImage},
-    staging_buffer::StagingBuffer,
-    SharedCore, vk,
-};
 use anyhow::Result;
+use watertender::{
+    memory::{ManagedBuffer, ManagedImage, UsageFlags},
+    staging_buffer::StagingBuffer,
+    vk, SharedCore,
+};
+
+pub const HEIGHT_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
+pub const EROSION_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 
 pub struct ErosionSim {
+    hills: ManagedBuffer,
     droplets: ManagedBuffer,
     erosion: ManagedImage,
     heightmap: ManagedImage,
+
+    init_particles: vk::Pipeline,
+    init_heightmap: vk::Pipeline,
+    sim_step: vk::Pipeline,
+    erosion_blur: vk::Pipeline,
+    core: SharedCore,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -19,8 +29,6 @@ pub struct InitSettings {
     pub noise_scale: f32,
     /// Noise vertical amplitude
     pub noise_amplitude: f32,
-    /// Number of hills (randomly placed)
-    pub n_hills: u32,
     /// Falloff rate for the curve
     pub hill_falloff: f32,
 }
@@ -59,18 +67,59 @@ pub struct Droplet {
 }
 */
 
-impl ErosionSim {
-    pub fn new(core: SharedCore, cmd: vk::CommandBuffer, width: u32, height: u32, settings: &InitSettings) -> Result<Self> {
+struct SimulationSize {
+    width: u32,
+    height: u32,
+    hills: u32,
+    droplets: u32,
+}
 
-        //let instance = Self {
-        //}
-        let instance: Self = todo!();
+impl ErosionSim {
+    pub fn new(
+        core: SharedCore,
+        cmd: vk::CommandBuffer,
+        size: SimulationSize,
+        settings: &InitSettings,
+    ) -> Result<Self> {
+        // Image settings
+        let extent = vk::Extent3DBuilder::new()
+            .width(size.width)
+            .height(size.height)
+            .depth(1)
+            .build();
+
+        debug_assert_eq!(EROSION_MAP_FORMAT, HEIGHT_MAP_FORMAT, "I'm lazy");
+        let ci = vk::ImageCreateInfoBuilder::new()
+            .image_type(vk::ImageType::_2D)
+            .extent(extent)
+            .mip_levels(1)
+            .array_layers(1)
+            .format(EROSION_MAP_FORMAT)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::STORAGE)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlagBits::_1);
+
+        let erosion = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
+        let heightmap = ManagedImage::new(core.clone(), ci, UsageFlags::FAST_DEVICE_ACCESS);
+
+        let instance = Self {
+            erosion,
+            heightmap,
+            core,
+        };
 
         instance.reset(cmd, settings)?;
         Ok(instance)
     }
 
-    pub fn step(&mut self, cmd: vk::CommandBuffer, settings: &SimulationSettings, iters: u32) -> Result<()> {
+    pub fn step(
+        &mut self,
+        cmd: vk::CommandBuffer,
+        settings: &SimulationSettings,
+        iters: u32,
+    ) -> Result<()> {
         todo!()
     }
 

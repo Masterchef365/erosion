@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     launch::<App>(info, vr)
 }
 
-const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
+const TEXTURE_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -53,7 +53,7 @@ impl MainLoop for App {
             command_buffer,
             info.width,
             info.height,
-            &data,
+            bytemuck::cast_slice(data.as_slice()),
             TEXTURE_FORMAT,
             vk::ImageUsageFlags::SAMPLED,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -318,17 +318,20 @@ fn rainbow_cube() -> (Vec<Vertex>, Vec<u32>) {
     (vertices, indices)
 }
 
-fn read_image(path: impl AsRef<Path>) -> Result<(Vec<u8>, png::OutputInfo)> {
+fn read_image(path: impl AsRef<Path>) -> Result<(Vec<f32>, png::OutputInfo)> {
     let img = png::Decoder::new(std::fs::File::open(path)?);
     let (info, mut reader) = img.read_info()?;
 
-    assert!(info.color_type == png::ColorType::RGBA);
+    const CHANNELS: u32 = 1;
+    assert!(info.color_type == png::ColorType::Grayscale);
     assert!(info.bit_depth == png::BitDepth::Eight);
 
     let mut img_buffer = vec![0; info.buffer_size()];
 
-    assert_eq!(info.buffer_size(), (info.width * info.height * 4) as _);
+    assert_eq!(info.buffer_size(), (info.width * info.height * CHANNELS) as _);
     reader.next_frame(&mut img_buffer)?;
+
+    let img_buffer: Vec<f32> = img_buffer.into_iter().map(|i| i as f32 / u8::MAX as f32).collect();
 
     Ok((img_buffer, info))
 }

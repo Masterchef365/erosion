@@ -5,9 +5,12 @@ use std::path::Path;
 use watertender::prelude::*;
 mod simulation;
 use simulation::*;
+mod config;
+use config::{Config, load_or_default_config};
 
 struct App {
     terrain_mesh: ManagedMesh,
+    config: Config,
 
     terrain_shader: vk::Pipeline,
     droplet_shader: vk::Pipeline,
@@ -45,29 +48,15 @@ unsafe impl bytemuck::Pod for SceneData {}
 
 impl MainLoop for App {
     fn new(core: &SharedCore, mut platform: Platform<'_>) -> Result<Self> {
+        let config = load_or_default_config("config.yml").context("Error loading config")?;
+
         let mut starter_kit = StarterKit::new(core.clone(), &mut platform)?;
-
-        // Simulation setup
-        let sim_size = SimulationSize {
-            width: 450,
-            height: 450,
-            droplets: 2000 * 32,
-        };
-
-        let init_settings = InitSettings {
-            seed: 2.0,
-            noise_res: 6,
-            noise_amplitude: 1.,
-            hill_peak: 1.,
-            hill_falloff: 3.,
-            n_hills: 4,
-        };
 
         let simulation = ErosionSim::new(
             starter_kit.core.clone(),
             starter_kit.current_command_buffer(),
-            sim_size,
-            &init_settings,
+            config.size,
+            &config.init,
         )?;
 
         // Camera
@@ -253,8 +242,8 @@ impl MainLoop for App {
         .context("Failed to compile shader")?;
 
         // Mesh uploads
-        assert_eq!(sim_size.width, sim_size.height);
-        let size = sim_size.width as i32;
+        assert_eq!(config.size.width, config.size.height);
+        let size = config.size.width as i32;
         let scale = 1. / (size * 2 + 1) as f32;
         let vertices = dense_grid_verts(size, scale);
         let indices = dense_grid_tri_indices(size);
@@ -266,6 +255,7 @@ impl MainLoop for App {
         )?;
 
         Ok(Self {
+            config,
             camera,
             simulation,
             droplet_shader,
@@ -290,18 +280,7 @@ impl MainLoop for App {
         let cmd = self.starter_kit.begin_command_buffer(frame)?;
         let command_buffer = cmd.command_buffer;
 
-        let sim_settings = SimulationSettings {
-            //inertia: 0.025,
-            inertia: 0.07,
-            min_slope: 0.01,
-            capacity_const: 1.0,
-            deposition: 1.0,
-            erosion: 0.0000000,
-            gravity: 0.1,
-            evaporation: 0.05,
-        };
-
-        self.simulation.step(command_buffer, &sim_settings, 1)?;
+        self.simulation.step(command_buffer, &self.config.step, self.config.control.steps_per_frame)?;
 
         self.starter_kit.begin_render_pass(cmd.command_buffer, frame, [0., 0., 0., 1.]);
 
@@ -364,6 +343,7 @@ impl MainLoop for App {
         _core: &Core,
         mut platform: Platform<'_>,
     ) -> Result<()> {
+        // TODO: Save image on exit! Also that path should be in the config file.
         self.camera.handle_event(&mut event, &mut platform);
         starter_kit::close_when_asked(event, platform);
         Ok(())

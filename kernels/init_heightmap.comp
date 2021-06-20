@@ -78,6 +78,7 @@ void main() {
         hill_height = max(hill_height, rand(vec2(i)) * hill_peak - dist * hill_falloff);
     }
 
+    // TODO: These numbers are magic!
     float height = perlin_height * 0.2 + hill_height * 0.5;
     imageStore(heightmap, img_pos, vec4(height));
     imageStore(erosionmap, img_pos, vec4(0.));

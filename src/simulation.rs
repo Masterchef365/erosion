@@ -3,6 +3,7 @@ use watertender::{
     memory::{ManagedBuffer, ManagedImage, UsageFlags},
     vk, SharedCore, Core,
 };
+use serde::{Serialize, Deserialize};
 
 pub const HEIGHT_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 pub const EROSION_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
@@ -41,7 +42,7 @@ pub struct ErosionSim {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InitSettings {
     /// Random seed
     pub seed: f32,
@@ -62,7 +63,7 @@ unsafe impl bytemuck::Pod for InitSettings {}
 
 // TODO: Builder pattern?
 #[repr(C)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SimulationSettings {
     /// Inertia
     pub inertia: f32,
@@ -98,7 +99,7 @@ pub struct Droplet {
     sediment: f32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct SimulationSize {
     pub width: u32,
     pub height: u32,

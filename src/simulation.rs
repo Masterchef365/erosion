@@ -588,6 +588,9 @@ impl ErosionSim {
 
         // Perform image copy
         unsafe {
+            // TODO: THIS IS A HACK
+            self.core.device.queue_wait_idle(self.core.queue).result()?;
+
             self.core.device.reset_command_buffer(cmd, None).result()?;
             let bi = vk::CommandBufferBeginInfoBuilder::new();
             self.core.device.begin_command_buffer(cmd, &bi).result()?;

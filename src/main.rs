@@ -247,7 +247,7 @@ impl MainLoop for App {
         let scale = 1. / (size * 2 + 1) as f32;
         let vertices = dense_grid_verts(size, scale);
         let indices = dense_grid_tri_indices(size);
-        let rainbow_cube = upload_mesh(
+        let terrain_mesh = upload_mesh(
             &mut starter_kit.staging_buffer,
             starter_kit.command_buffers[0],
             &vertices,
@@ -265,8 +265,8 @@ impl MainLoop for App {
             anim: 0.0,
             pipeline_layout,
             scene_ubo,
-            terrain_mesh: rainbow_cube,
-            terrain_shader: terrain_shader,
+            terrain_mesh,
+            terrain_shader,
             starter_kit,
         })
     }
@@ -349,6 +349,48 @@ impl MainLoop for App {
         Ok(())
     }
 }
+
+impl Drop for App {
+    fn drop(&mut self) {
+        let img_data: Vec<f32> = self
+            .simulation
+            .download_heightmap_data(self.starter_kit.command_buffers[0])
+            .expect("Couldn't download heightmap data");
+
+        use std::cmp::Ordering;
+        fn float_cmp(a: &&f32, b: &&f32) -> Ordering {
+            a.partial_cmp(b).unwrap_or(Ordering::Equal)
+        }
+
+        let filtered = img_data.iter().filter(|f| f.is_finite());
+        let mean = filtered.clone().sum::<f32>() / img_data.len() as f32;
+        let variance = filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
+        let stddev = variance.sqrt();
+        const MAX_STDDEVS: f32 = 3.;
+        let width = stddev * MAX_STDDEVS;
+
+        let px_to_u8 = |px: f32| (((px - mean) / width) * 128. + 128.).max(0.).min(256.) as u8;
+
+        let img_data: Vec<u8> = img_data.into_iter().map(px_to_u8).collect();
+
+        // Write png data
+        let path = "out.png";
+        let file = std::fs::File::create(path).unwrap();
+        let ref mut w = std::io::BufWriter::new(file);
+        
+        let sim_size = self.simulation.size();
+        let mut encoder = png::Encoder::new(w, sim_size.width, sim_size.height); // Width is 2 pixels and height is 1.
+        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        
+        writer.write_image_data(&img_data).unwrap(); // Save
+
+        //let min = heightmap_data_float.iter().filter(|f| f.is_finite()).min_by(float_cmp);
+        //let max = heightmap_data_float.iter().filter(|f| f.is_finite()).max_by(float_cmp);
+    }
+}
+
 
 impl SyncMainLoop for App {
     fn winit_sync(&self) -> (vk::Semaphore, vk::Semaphore) {

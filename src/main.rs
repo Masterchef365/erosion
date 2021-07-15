@@ -347,6 +347,22 @@ impl MainLoop for App {
         _core: &Core,
         mut platform: Platform<'_>,
     ) -> Result<()> {
+        use watertender::winit::event::{Event, VirtualKeyCode, WindowEvent};
+        if let PlatformEvent::Winit(event) = event {
+            if let Event::WindowEvent { event, .. } = event {
+                if let WindowEvent::KeyboardInput { input, .. } = event {
+                    if let Some(key) = input.virtual_keycode {
+                        match key {
+                            VirtualKeyCode::S => {
+                                self.save_png("out.png").context("Failed to save PNG")?
+                            }
+                            _ => (),
+                        }
+                    }
+                }
+            }
+        }
+
         // TODO: Save image on exit! Also that path should be in the config file.
         self.camera.handle_event(&mut event, &mut platform);
         starter_kit::close_when_asked(event, platform);
@@ -356,44 +372,60 @@ impl MainLoop for App {
 
 impl Drop for App {
     fn drop(&mut self) {
+        self.save_png("out.png").expect("Failed to save PNG");
+    }
+}
+
+impl App {
+    fn save_png(&self, path: impl AsRef<Path>) -> Result<()> {
         let img_data: Vec<f32> = self
             .simulation
             .download_heightmap_data(self.starter_kit.command_buffers[0])
-            .expect("Couldn't download heightmap data");
-
-        use std::cmp::Ordering;
-        fn float_cmp(a: &&f32, b: &&f32) -> Ordering {
-            a.partial_cmp(b).unwrap_or(Ordering::Equal)
-        }
-
-        let filtered = img_data.iter().filter(|f| f.is_finite());
-        let mean = filtered.clone().sum::<f32>() / img_data.len() as f32;
-        let variance =
-            filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
-        let stddev = variance.sqrt();
-        const MAX_STDDEVS: f32 = 3.;
-        let width = stddev * MAX_STDDEVS;
-
-        let px_to_u8 = |px: f32| (((px - mean) / width) * 128. + 128.).max(0.).min(256.) as u8;
-
-        let img_data: Vec<u8> = img_data.into_iter().map(px_to_u8).collect();
-
-        // Write png data
-        let path = "out.png";
-        let file = std::fs::File::create(path).unwrap();
-        let ref mut w = std::io::BufWriter::new(file);
-
+            .context("Couldn't download heightmap data")?;
+        let img_data = scale_image_data_u8(img_data, 2.);
         let sim_size = self.simulation.size();
-        let mut encoder = png::Encoder::new(w, sim_size.width, sim_size.height); // Width is 2 pixels and height is 1.
-        encoder.set_color(png::ColorType::Grayscale);
-        encoder.set_depth(png::BitDepth::Eight);
-        let mut writer = encoder.write_header().unwrap();
-
-        writer.write_image_data(&img_data).unwrap(); // Save
-
-        //let min = heightmap_data_float.iter().filter(|f| f.is_finite()).min_by(float_cmp);
-        //let max = heightmap_data_float.iter().filter(|f| f.is_finite()).max_by(float_cmp);
+        write_gray_png(&img_data, path, sim_size.width, sim_size.height)
     }
+}
+
+/// Write a grayscale PNG with this image data
+fn write_gray_png(data: &[u8], path: impl AsRef<Path>, width: u32, height: u32) -> Result<()> {
+    assert_eq!(data.len() as u32, width * height);
+
+    let file = std::fs::File::create(path)?;
+    let ref mut w = std::io::BufWriter::new(file);
+
+    let mut encoder = png::Encoder::new(w, width, height); // Width is 2 pixels and height is 1.
+    encoder.set_color(png::ColorType::Grayscale);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header()?;
+
+    writer.write_image_data(&data)?;
+
+    Ok(())
+}
+
+fn scale_image_data_u8(img_data: Vec<f32>, max_stddevs: f32) -> Vec<u8> {
+    use std::cmp::Ordering;
+    fn float_cmp(a: &&f32, b: &&f32) -> Ordering {
+        a.partial_cmp(b).unwrap_or(Ordering::Equal)
+    }
+
+    // Create an iterator of filtered data (no NaNs!)
+    let filtered = img_data.iter().filter(|f| f.is_finite());
+
+    // Do some stats to find the standard deviation
+    let mean = filtered.clone().sum::<f32>() / img_data.len() as f32;
+    let variance =
+        filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
+    let stddev = variance.sqrt();
+
+    // Subtract pixels from the mean and divide by standard deviation. Then clamp between 0 and 255
+    let width = stddev * max_stddevs;
+    let px_to_u8 = |px: f32| (((px - mean) / width) * 128. + 128.).max(0.).min(256.) as u8;
+
+    // Export!
+    img_data.into_iter().map(px_to_u8).collect()
 }
 
 impl SyncMainLoop for App {

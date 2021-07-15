@@ -356,6 +356,9 @@ impl MainLoop for App {
                             VirtualKeyCode::S => {
                                 self.save_png("out.png").context("Failed to save PNG")?
                             }
+                            VirtualKeyCode::P => {
+                                self.save_pfm("out.pfm").context("Failed to save PNG")?
+                            }
                             _ => (),
                         }
                     }
@@ -373,6 +376,7 @@ impl MainLoop for App {
 impl Drop for App {
     fn drop(&mut self) {
         self.save_png("out.png").expect("Failed to save PNG");
+        self.save_pfm("out.pfm").expect("Failed to save PFM");
     }
 }
 
@@ -382,10 +386,21 @@ impl App {
             .simulation
             .download_heightmap_data(self.starter_kit.command_buffers[0])
             .context("Couldn't download heightmap data")?;
-        let img_data = scale_image_data_u8(img_data, 2.);
+        let img_data = scale_image_data_u8(img_data);
         let sim_size = self.simulation.size();
         write_gray_png(&img_data, path, sim_size.width, sim_size.height)
     }
+
+    fn save_pfm(&self, path: impl AsRef<Path>) -> Result<()> {
+        let img_data: Vec<f32> = self
+            .simulation
+            .download_heightmap_data(self.starter_kit.command_buffers[0])
+            .context("Couldn't download heightmap data")?;
+        let sim_size = self.simulation.size();
+
+        write_pfm(&img_data, path, sim_size.width, sim_size.height)
+    }
+
 }
 
 /// Write a grayscale PNG with this image data
@@ -405,24 +420,51 @@ fn write_gray_png(data: &[u8], path: impl AsRef<Path>, width: u32, height: u32) 
     Ok(())
 }
 
-fn scale_image_data_u8(img_data: Vec<f32>, max_stddevs: f32) -> Vec<u8> {
-    use std::cmp::Ordering;
-    fn float_cmp(a: &&f32, b: &&f32) -> Ordering {
-        a.partial_cmp(b).unwrap_or(Ordering::Equal)
-    }
+use std::io::Write;
 
+/// Write a grayscale PFM with this image data; use normalized inputs for proper image reading (yet accepts any float data)
+fn write_pfm(data: &[f32], path: impl AsRef<Path>, width: u32, height: u32) -> Result<()> {
+    // https://en.wikipedia.org/wiki/Netpbm#32-bit_extensions
+    let file = std::fs::File::create(path)?;
+    let ref mut w = std::io::BufWriter::new(file);
+
+    writeln!(w, "Pf")?;
+    writeln!(w, "{} {}", width, height)?;
+    writeln!(w, "-1.0")?;
+    w.write(bytemuck::cast_slice(data))?;
+
+    Ok(())
+}
+
+/*
+fn calc_mean_stddev(data: &[f32]) -> (f32, f32) {
     // Create an iterator of filtered data (no NaNs!)
-    let filtered = img_data.iter().filter(|f| f.is_finite());
+    let filtered = data.iter().filter(|f| f.is_finite());
 
-    // Do some stats to find the standard deviation
-    let mean = filtered.clone().sum::<f32>() / img_data.len() as f32;
-    let variance =
-        filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
+    let mean = filtered
+        .clone()
+        .sum::<f32>()
+        / data.len() as f32;
+
+    let variance = filtered
+        .clone()
+        .map(|px| (mean - px).powf(2.))
+        .sum::<f32>()
+        / data.len() as f32;
+
     let stddev = variance.sqrt();
 
+    (mean, stddev)
+}
+*/
+
+fn scale_image_data_u8(img_data: Vec<f32>) -> Vec<u8> {
+    //let (mean, stddev) = calc_mean_stddev(&img_data);
+
     // Subtract pixels from the mean and divide by standard deviation. Then clamp between 0 and 255
-    let width = stddev * max_stddevs;
-    let px_to_u8 = |px: f32| (((px - mean) / width) * 128. + 128.).max(0.).min(256.) as u8;
+    //let width = stddev * max_stddevs;
+    //let px_to_u8 = |px: f32| (((px - mean) / width) * 128. + 128.).max(0.).min(256.) as u8;
+    let px_to_u8 = |px: f32| (px * 256.).max(0.).min(256.) as u8;
 
     // Export!
     img_data.into_iter().map(px_to_u8).collect()

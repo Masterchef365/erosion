@@ -6,7 +6,7 @@ use watertender::prelude::*;
 mod simulation;
 use simulation::*;
 mod config;
-use config::{Config, load_or_default_config};
+use config::{load_or_default_config, Config};
 
 struct App {
     terrain_mesh: ManagedMesh,
@@ -177,9 +177,7 @@ impl MainLoop for App {
         let droplet_buffer_info = [vk::DescriptorBufferInfoBuilder::new()
             .buffer(simulation.droplet_buffer_vk())
             .offset(0)
-            .range(vk::WHOLE_SIZE)
-        ];
-
+            .range(vk::WHOLE_SIZE)];
 
         // Write descriptor sets
         for (frame, &descriptor_set) in descriptor_sets.iter().enumerate() {
@@ -280,9 +278,14 @@ impl MainLoop for App {
         let cmd = self.starter_kit.begin_command_buffer(frame)?;
         let command_buffer = cmd.command_buffer;
 
-        self.simulation.step(command_buffer, &self.config.step, self.config.control.steps_per_frame)?;
+        self.simulation.step(
+            command_buffer,
+            &self.config.step,
+            self.config.control.steps_per_frame,
+        )?;
 
-        self.starter_kit.begin_render_pass(cmd.command_buffer, frame, [0., 0., 0., 1.]);
+        self.starter_kit
+            .begin_render_pass(cmd.command_buffer, frame, [0., 0., 0., 1.]);
 
         unsafe {
             core.device.cmd_bind_descriptor_sets(
@@ -314,7 +317,8 @@ impl MainLoop for App {
                 self.droplet_shader,
             );
 
-            core.device.cmd_draw(command_buffer, self.simulation.size().droplets, 1, 0, 0);
+            core.device
+                .cmd_draw(command_buffer, self.simulation.size().droplets, 1, 0, 0);
         }
 
         let (ret, cameras) = self.camera.get_matrices(platform)?;
@@ -364,7 +368,8 @@ impl Drop for App {
 
         let filtered = img_data.iter().filter(|f| f.is_finite());
         let mean = filtered.clone().sum::<f32>() / img_data.len() as f32;
-        let variance = filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
+        let variance =
+            filtered.clone().map(|px| (mean - px).powf(2.)).sum::<f32>() / img_data.len() as f32;
         let stddev = variance.sqrt();
         const MAX_STDDEVS: f32 = 3.;
         let width = stddev * MAX_STDDEVS;
@@ -377,20 +382,19 @@ impl Drop for App {
         let path = "out.png";
         let file = std::fs::File::create(path).unwrap();
         let ref mut w = std::io::BufWriter::new(file);
-        
+
         let sim_size = self.simulation.size();
         let mut encoder = png::Encoder::new(w, sim_size.width, sim_size.height); // Width is 2 pixels and height is 1.
         encoder.set_color(png::ColorType::Grayscale);
         encoder.set_depth(png::BitDepth::Eight);
         let mut writer = encoder.write_header().unwrap();
-        
+
         writer.write_image_data(&img_data).unwrap(); // Save
 
         //let min = heightmap_data_float.iter().filter(|f| f.is_finite()).min_by(float_cmp);
         //let max = heightmap_data_float.iter().filter(|f| f.is_finite()).max_by(float_cmp);
     }
 }
-
 
 impl SyncMainLoop for App {
     fn winit_sync(&self) -> (vk::Semaphore, vk::Semaphore) {
@@ -457,7 +461,6 @@ fn dense_grid_tri_indices(size: i32) -> Vec<u32> {
     }
     indices
 }
-
 
 // Build a graphics pipeline compatible with `Vertex` which renders the given primitive
 pub fn vert_pulling_shader(

@@ -1,9 +1,9 @@
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use watertender::{
     memory::{ManagedBuffer, ManagedImage, UsageFlags},
-    vk, SharedCore, Core,
+    vk, Core, SharedCore,
 };
-use serde::{Serialize, Deserialize};
 
 pub const HEIGHT_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
 pub const EROSION_MAP_FORMAT: vk::Format = vk::Format::R32_SFLOAT;
@@ -130,7 +130,12 @@ impl ErosionSim {
             .format(EROSION_MAP_FORMAT)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::TRANSFER_SRC)
+            .usage(
+                vk::ImageUsageFlags::STORAGE
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::TRANSFER_SRC,
+            )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
@@ -160,14 +165,14 @@ impl ErosionSim {
         // Pool:
         let pool_sizes = [
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1),
+                ._type(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(1),
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(1),
+                ._type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1),
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::STORAGE_IMAGE)
-            .descriptor_count(2),
+                ._type(vk::DescriptorType::STORAGE_IMAGE)
+                .descriptor_count(2),
             /*vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .descriptor_count(1),*/
@@ -201,16 +206,19 @@ impl ErosionSim {
                 .descriptor_count(1)
                 .stage_flags(vk::ShaderStageFlags::COMPUTE),
             /*vk::DescriptorSetLayoutBindingBuilder::new()
-                .binding(HEIGHT_MAP_SAMPLER_BINDING)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::COMPUTE),*/
+            .binding(HEIGHT_MAP_SAMPLER_BINDING)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::COMPUTE),*/
         ];
 
         let create_info = vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
 
-        let descriptor_set_layout =
-            unsafe { core.device.create_descriptor_set_layout(&create_info, None, None) }.result()?;
+        let descriptor_set_layout = unsafe {
+            core.device
+                .create_descriptor_set_layout(&create_info, None, None)
+        }
+        .result()?;
 
         // Set:
         let descriptor_set_layouts = [descriptor_set_layout];
@@ -218,18 +226,20 @@ impl ErosionSim {
             .descriptor_pool(descriptor_pool)
             .set_layouts(&descriptor_set_layouts);
 
-        let descriptor_set = unsafe { core.device.allocate_descriptor_sets(&create_info) }.result()?[0];
+        let descriptor_set =
+            unsafe { core.device.allocate_descriptor_sets(&create_info) }.result()?[0];
 
         // Pipeline
-        let create_info =
-            vk::PipelineLayoutCreateInfoBuilder::new()
+        let create_info = vk::PipelineLayoutCreateInfoBuilder::new()
             .push_constant_ranges(&[])
             .set_layouts(&descriptor_set_layouts);
         let pipeline_layout =
             unsafe { core.device.create_pipeline_layout(&create_info, None, None) }.result()?;
 
-        let init_droplets = load_pipeline(&core, "kernels/init_droplets.comp.spv", pipeline_layout)?;
-        let init_heightmap = load_pipeline(&core, "kernels/init_heightmap.comp.spv", pipeline_layout)?;
+        let init_droplets =
+            load_pipeline(&core, "kernels/init_droplets.comp.spv", pipeline_layout)?;
+        let init_heightmap =
+            load_pipeline(&core, "kernels/init_heightmap.comp.spv", pipeline_layout)?;
         let sim_step = load_pipeline(&core, "kernels/sim_step.comp.spv", pipeline_layout)?;
         let erosion_blur = load_pipeline(&core, "kernels/erosion_blur.comp.spv", pipeline_layout)?;
 
@@ -345,7 +355,8 @@ impl ErosionSim {
         settings: &SimulationSettings,
         iters: u32,
     ) -> Result<()> {
-        self.settings_buf.write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
+        self.settings_buf
+            .write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
 
         let img_subresource = vk::ImageSubresourceRangeBuilder::new()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -367,7 +378,7 @@ impl ErosionSim {
                     .image(self.erosion.instance())
                     .subresource_range(img_subresource)
                     .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::GENERAL)
+                    .new_layout(vk::ImageLayout::GENERAL),
             ];
 
             self.core.device.cmd_pipeline_barrier(
@@ -382,12 +393,12 @@ impl ErosionSim {
 
             // Bind descriptor set
             self.core.device.cmd_bind_descriptor_sets(
-                cmd, 
-                vk::PipelineBindPoint::COMPUTE, 
-                self.pipeline_layout, 
-                0, 
-                &[self.descriptor_set], 
-                &[]
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                self.pipeline_layout,
+                0,
+                &[self.descriptor_set],
+                &[],
             );
 
             // Iteration loop
@@ -397,9 +408,7 @@ impl ErosionSim {
                     cmd,
                     self.erosion.instance(),
                     vk::ImageLayout::GENERAL,
-                    &vk::ClearColorValue {
-                        float32: [0.; 4],
-                    },
+                    &vk::ClearColorValue { float32: [0.; 4] },
                     &[img_subresource.into_builder()],
                 );
 
@@ -428,7 +437,7 @@ impl ErosionSim {
                     (self.sim_size.height / KERNEL_LOCAL_X) + 1,
                     1,
                 );
-                
+
                 // TODO: Make memory available
                 self.core.device.cmd_pipeline_barrier(
                     cmd,
@@ -452,7 +461,7 @@ impl ErosionSim {
                     .image(self.erosion.instance())
                     .subresource_range(img_subresource)
                     .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL),
             ];
 
             self.core.device.cmd_pipeline_barrier(
@@ -464,7 +473,6 @@ impl ErosionSim {
                 &[],
                 &image_memory_barriers,
             );
-
         }
 
         Ok(())
@@ -472,7 +480,8 @@ impl ErosionSim {
 
     pub fn reset(&mut self, cmd: vk::CommandBuffer, settings: &InitSettings) -> Result<()> {
         // Update settings buffer (TODO: Barrier?)
-        self.settings_buf.write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
+        self.settings_buf
+            .write_bytes(0, bytemuck::cast_slice(std::slice::from_ref(settings)))?;
 
         let img_subresource = vk::ImageSubresourceRangeBuilder::new()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -492,7 +501,7 @@ impl ErosionSim {
                 .image(self.erosion.instance())
                 .subresource_range(img_subresource)
                 .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::GENERAL)
+                .new_layout(vk::ImageLayout::GENERAL),
         ];
 
         unsafe {
@@ -511,25 +520,39 @@ impl ErosionSim {
             );
 
             self.core.device.cmd_bind_descriptor_sets(
-                cmd, 
-                vk::PipelineBindPoint::COMPUTE, 
-                self.pipeline_layout, 
-                0, 
-                &[self.descriptor_set], 
-                &[]
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                self.pipeline_layout,
+                0,
+                &[self.descriptor_set],
+                &[],
             );
 
-            self.core.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.init_droplets);
-            self.core.device.cmd_dispatch(cmd, (self.sim_size.droplets / KERNEL_LOCAL_X) + 1, 1, 1);
+            self.core.device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                self.init_droplets,
+            );
+            self.core
+                .device
+                .cmd_dispatch(cmd, (self.sim_size.droplets / KERNEL_LOCAL_X) + 1, 1, 1);
 
-            self.core.device.cmd_bind_pipeline(cmd, vk::PipelineBindPoint::COMPUTE, self.init_heightmap);
-            self.core.device.cmd_dispatch(cmd, (self.sim_size.width / KERNEL_LOCAL_X) + 1, (self.sim_size.height / KERNEL_LOCAL_Y) + 1, 1);
+            self.core.device.cmd_bind_pipeline(
+                cmd,
+                vk::PipelineBindPoint::COMPUTE,
+                self.init_heightmap,
+            );
+            self.core.device.cmd_dispatch(
+                cmd,
+                (self.sim_size.width / KERNEL_LOCAL_X) + 1,
+                (self.sim_size.height / KERNEL_LOCAL_Y) + 1,
+                1,
+            );
 
             self.core.device.end_command_buffer(cmd).result()?;
 
             let command_buffers = [cmd];
-            let submit_info = vk::SubmitInfoBuilder::new()
-                .command_buffers(&command_buffers);
+            let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&command_buffers);
 
             self.core
                 .device
@@ -555,7 +578,7 @@ impl ErosionSim {
     }
 
     /// Returns heightmap data in row-major order with the same dimensions returned by size()
-    /// NOTE: Do not use this inside of a render loop! Resets, submits, and waits. 
+    /// NOTE: Do not use this inside of a render loop! Resets, submits, and waits.
     pub fn download_heightmap_data(&self, cmd: vk::CommandBuffer) -> Result<Vec<f32>> {
         // We don't have to wait, since this isn't supposed to be called in the middle of a sim step
         let n_pixels = self.sim_size.width * self.sim_size.height;
@@ -566,11 +589,7 @@ impl ErosionSim {
             .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
-        let mut download_buf = ManagedBuffer::new(
-            self.core.clone(),
-            ci,
-            UsageFlags::DOWNLOAD,
-        )?;
+        let mut download_buf = ManagedBuffer::new(self.core.clone(), ci, UsageFlags::DOWNLOAD)?;
 
         let image_layers = vk::ImageSubresourceLayersBuilder::new()
             .aspect_mask(vk::ImageAspectFlags::COLOR)
@@ -584,7 +603,12 @@ impl ErosionSim {
             .buffer_image_height(0)
             .image_subresource(*image_layers)
             .image_offset(*vk::Offset3DBuilder::new().x(0).y(0).z(0))
-            .image_extent(*vk::Extent3DBuilder::new().width(self.sim_size.width).height(self.sim_size.height).depth(1));
+            .image_extent(
+                *vk::Extent3DBuilder::new()
+                    .width(self.sim_size.width)
+                    .height(self.sim_size.height)
+                    .depth(1),
+            );
 
         // Perform image copy
         unsafe {
@@ -603,14 +627,12 @@ impl ErosionSim {
                 .layer_count(1)
                 .build();
 
-                // Transition heightmap image to GENERAL
-                let image_memory_barriers = [
-                    vk::ImageMemoryBarrierBuilder::new()
-                        .image(self.heightmap.instance())
-                        .subresource_range(img_subresource)
-                        .old_layout(vk::ImageLayout::UNDEFINED)
-                        .new_layout(vk::ImageLayout::GENERAL),
-                ];
+            // Transition heightmap image to GENERAL
+            let image_memory_barriers = [vk::ImageMemoryBarrierBuilder::new()
+                .image(self.heightmap.instance())
+                .subresource_range(img_subresource)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::GENERAL)];
 
             self.core.device.cmd_pipeline_barrier(
                 cmd,
@@ -627,14 +649,13 @@ impl ErosionSim {
                 self.heightmap.instance(),
                 vk::ImageLayout::GENERAL,
                 download_buf.instance(),
-                &[image_copy]
+                &[image_copy],
             );
 
             self.core.device.end_command_buffer(cmd).result()?;
 
             let command_buffers = [cmd];
-            let submit_info = vk::SubmitInfoBuilder::new()
-                .command_buffers(&command_buffers);
+            let submit_info = vk::SubmitInfoBuilder::new().command_buffers(&command_buffers);
 
             self.core
                 .device
@@ -642,8 +663,6 @@ impl ErosionSim {
                 .result()?;
 
             self.core.device.queue_wait_idle(self.core.queue).result()?;
-
-
         }
 
         let mut host_buf = vec![0.0f32; n_pixels as usize];
@@ -659,7 +678,11 @@ impl ErosionSim {
     //pub fn upload_droplets(&mut self, droplets: &[Particle]);
 }
 
-fn load_pipeline(core: &Core, path: &str, pipeline_layout: vk::PipelineLayout) -> Result<vk::Pipeline> {
+fn load_pipeline(
+    core: &Core,
+    path: &str,
+    pipeline_layout: vk::PipelineLayout,
+) -> Result<vk::Pipeline> {
     let device = &core.device;
 
     // Load shader

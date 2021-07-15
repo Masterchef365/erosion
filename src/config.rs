@@ -1,8 +1,8 @@
-use crate::simulation::{SimulationSettings, SimulationSize, InitSettings};
-use serde::{Serialize, Deserialize};
-use std::path::Path;
-use std::fs::File;
+use crate::simulation::{InitSettings, SimulationSettings, SimulationSize};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::path::Path;
 
 #[derive(Copy, Clone, Default, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -19,9 +19,7 @@ pub struct Control {
 
 impl Default for Control {
     fn default() -> Self {
-        Self {
-            steps_per_frame: 1,
-        }
+        Self { steps_per_frame: 1 }
     }
 }
 
@@ -40,13 +38,14 @@ pub fn load_or_default_config(path: impl AsRef<Path>) -> Result<Config> {
     let ret = File::open(&path);
     match ret {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("Config file not found at path {:?}; writing defaults and exiting.", path.as_ref());
+            eprintln!(
+                "Config file not found at path {:?}; writing defaults and exiting.",
+                path.as_ref()
+            );
             Config::default().save(path)?;
             std::process::exit(-1);
-        },
-        Ok(file) => {
-            Ok(serde_yaml::from_reader(file)?)
         }
+        Ok(file) => Ok(serde_yaml::from_reader(file)?),
         Err(err) => Err(err)?,
     }
 }
@@ -63,7 +62,7 @@ impl Default for SimulationSize {
 
 impl Default for InitSettings {
     fn default() -> Self {
-         Self {
+        Self {
             seed: 2.0,
             noise_res: 6,
             noise_amplitude: 1.,

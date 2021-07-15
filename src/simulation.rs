@@ -554,6 +554,74 @@ impl ErosionSim {
         self.sim_size
     }
 
+    /// Returns heightmap data in row-major order with the same dimensions returned by size()
+    /// NOTE: Do not use this inside of a render loop! Resets, submits, and waits. 
+    pub fn download_heightmap_data(&self, cmd: vk::CommandBuffer) -> Result<Vec<f32>> {
+        // We don't have to wait, since this isn't supposed to be called in the middle of a sim step
+        let n_pixels = self.sim_size.width * self.sim_size.height;
+        let n_bytes = std::mem::size_of::<f32>() as u64 * n_pixels as u64;
+
+        let ci = vk::BufferCreateInfoBuilder::new()
+            .size(n_bytes as _)
+            .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::STORAGE_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        let mut download_buf = ManagedBuffer::new(
+            self.core.clone(),
+            ci,
+            UsageFlags::DOWNLOAD,
+        )?;
+
+        let image_layers = vk::ImageSubresourceLayersBuilder::new()
+            .aspect_mask(vk::ImageAspectFlags::COLOR)
+            .layer_count(1)
+            .mip_level(0)
+            .base_array_layer(0);
+
+        let image_copy = vk::BufferImageCopyBuilder::new()
+            .buffer_offset(0)
+            .buffer_row_length(0)
+            .buffer_image_height(0)
+            .image_subresource(*image_layers)
+            .image_offset(*vk::Offset3DBuilder::new().x(0).y(0).z(0))
+            .image_extent(*vk::Extent3DBuilder::new().width(self.sim_size.width).height(self.sim_size.height).depth(1));
+
+        // Perform image copy
+        unsafe {
+            self.core.device.reset_command_buffer(cmd, None).result()?;
+            let bi = vk::CommandBufferBeginInfoBuilder::new();
+            self.core.device.begin_command_buffer(cmd, &bi).result()?;
+
+            self.core.device.cmd_copy_image_to_buffer(
+                cmd,
+                self.heightmap.instance(),
+                vk::ImageLayout::GENERAL,
+                download_buf.instance(),
+                &[image_copy]
+            );
+
+            self.core.device.end_command_buffer(cmd).result()?;
+
+            let command_buffers = [cmd];
+            let submit_info = vk::SubmitInfoBuilder::new()
+                .command_buffers(&command_buffers);
+
+            self.core
+                .device
+                .queue_submit(self.core.queue, &[submit_info], None)
+                .result()?;
+
+            self.core.device.queue_wait_idle(self.core.queue).result()?;
+
+
+        }
+
+        let mut host_buf = vec![0.0f32; n_pixels as usize];
+        download_buf.read_bytes(0, bytemuck::cast_slice_mut(&mut host_buf))?;
+
+        Ok(host_buf)
+    }
+
     //pub fn download_droplets(&mut self) -> Vec<Particle> {}
     //pub fn download_heightmap(&mut self) -> Vec<f32> {}
 

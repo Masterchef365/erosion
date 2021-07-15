@@ -130,7 +130,7 @@ impl ErosionSim {
             .format(EROSION_MAP_FORMAT)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::TRANSFER_SRC)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlagBits::_1);
 
@@ -594,6 +594,33 @@ impl ErosionSim {
             self.core.device.reset_command_buffer(cmd, None).result()?;
             let bi = vk::CommandBufferBeginInfoBuilder::new();
             self.core.device.begin_command_buffer(cmd, &bi).result()?;
+
+            let img_subresource = vk::ImageSubresourceRangeBuilder::new()
+                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1)
+                .build();
+
+                // Transition heightmap image to GENERAL
+                let image_memory_barriers = [
+                    vk::ImageMemoryBarrierBuilder::new()
+                        .image(self.heightmap.instance())
+                        .subresource_range(img_subresource)
+                        .old_layout(vk::ImageLayout::UNDEFINED)
+                        .new_layout(vk::ImageLayout::GENERAL),
+                ];
+
+            self.core.device.cmd_pipeline_barrier(
+                cmd,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+                None,
+                &[],
+                &[],
+                &image_memory_barriers,
+            );
 
             self.core.device.cmd_copy_image_to_buffer(
                 cmd,
